@@ -24,9 +24,13 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     createTextures(this);
+    // URL の ?mode= は最初の1回だけ効かせる。Esc でメニューに戻ったときに再び飛ばされないよう、ここで消す。
     const params = new URLSearchParams(location.search);
     const mode = params.get("mode");
     if (mode === "endless" || mode === "versus") {
+      params.delete("mode");
+      const rest = params.toString();
+      history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : ""));
       this.scene.start("game", { mode });
       return;
     }
