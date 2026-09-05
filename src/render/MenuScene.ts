@@ -118,6 +118,11 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const kb = this.input.keyboard!;
+    // AudioContext は最初の操作のあとにしか動かないので、どの入力でも start() を呼ぶ。BGM は start() 時に鳴り始める
+    kb.on("keydown", () => audio.start());
+    this.input.on("pointerdown", () => audio.start());
+    audio.start();
+    audio.startBgm("menu");
     kb.on("keydown-UP", () => this.moveIndex(-1));
     kb.on("keydown-DOWN", () => this.moveIndex(1));
     kb.on("keydown-W", () => this.moveIndex(-1));

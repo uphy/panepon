@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>効果音 候補（SFC風）</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px; background: #12141c; color: #e6e6ea; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p.note { color: #9aa0b4; font-size: 13px; margin: 0 0 16px; line-height: 1.6; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 12px 16px; background: #1b1e2a; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+  .controls label { display: flex; align-items: center; gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
+  .card { background: #1b1e2a; border: 2px solid #2a2e40; border-radius: 10px; padding: 14px 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; }
+  .card h2 .id { color: #ffd34d; margin-right: 8px; }
+  .card .desc { font-size: 12px; color: #9aa0b4; margin: 0 0 10px; line-height: 1.6; }
+  .row { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; font-size: 13px; }
+  .row .label { flex: 0 0 44px; padding-top: 5px; font-weight: bold; }
+  .row .label.cur { color: #8b91a8; font-weight: normal; }
+  .row .body { flex: 1; }
+  .row .hint { color: #8b91a8; font-size: 12px; margin-top: 3px; line-height: 1.5; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #3a3f58; background: #2a2e40; color: #fff; cursor: pointer; }
+  button:hover { background: #363b54; }
+  button.main { background: #ffd34d; color: #1a1a1a; border-color: #ffd34d; font-weight: bold; }
+  button.cur { background: #23263a; color: #b0b4c8; }
+</style>
+</head>
+<body>
+<h1>効果音 候補（SFC風・Web Audio 合成）</h1>
+<p class="note">イベントごとに A / B / C の案を並べています。「現行」は今ゲームに入っている音の再現です。<br>
+気に入った案を「swap: B, match: A, …」のように教えてください。パラメータのあるイベント（枚数・連鎖数・高さ）は同じ案でボタンを分けています。</p>
+<div class="controls">
+  <label>音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+  <label><input id="echo" type="checkbox" checked> エコー</label>
+  <label><input id="bgm" type="checkbox"> BGM を流しながら聞く（ゲーム曲）</label>
+</div>
+<div id="list" class="grid"></div>
+
+<script>
+'use strict';
+
+// ============================================================ 基本
+const NOTE_IDX = { c:0,'c#':1,db:1,d:2,'d#':3,eb:3,e:4,f:5,'f#':6,gb:6,g:7,'g#':8,ab:8,a:9,'a#':10,bb:10,b:11 };
+function n(name) {
+  const m = /^([a-g])([#b]?)(-?\d)$/.exec(name);
+  if (!m) throw new Error('音名が不正: ' + name);
+  return 440 * Math.pow(2, ((Number(m[3]) + 1) * 12 + NOTE_IDX[m[1] + m[2]] - 69) / 12);
+}
+const st = (f, semis) => f * Math.pow(2, semis / 12);
+
+let ctx, master, echoIn, echoOut, waves, noiseBuf;
+function init() {
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  ctx = new AudioContext();
+  master = ctx.createGain(); master.gain.value = Number(document.getElementById('vol').value);
+  const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 9000; tone.Q.value = 0.5;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = 0.005; comp.release.value = 0.15;
+  master.connect(tone); tone.connect(comp); comp.connect(ctx.destination);
+
+  echoIn = ctx.createGain();
+  const delay = ctx.createDelay(1); delay.delayTime.value = 0.13;
+  const fb = ctx.createGain(); fb.gain.value = 0.3;
+  const fbf = ctx.createBiquadFilter(); fbf.type = 'lowpass'; fbf.frequency.value = 3000;
+  echoOut = ctx.createGain(); echoOut.gain.value = document.getElementById('echo').checked ? 1 : 0;
+  echoIn.connect(delay); delay.connect(fbf); fbf.connect(fb); fb.connect(delay); delay.connect(echoOut); echoOut.connect(master);
+
+  const pulse = (duty) => {
+    const N = 48, real = new Float32Array(N), imag = new Float32Array(N);
+    for (let k = 1; k < N; k++) real[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty);
+    return ctx.createPeriodicWave(real, imag);
+  };
+  waves = { pulse25: pulse(0.25), pulse12: pulse(0.125) };
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+
+function out(node, echo) {
+  node.connect(master);
+  if (echo) { const s = ctx.createGain(); s.gain.value = echo; node.connect(s); s.connect(echoIn); }
+}
+
+// 1音。f→f2 へスライド。a: アタック秒。curve: 'exp' は減衰、'hold' は dur の間保って短く切る。
+function voice({ wave = 'square', f, f2, slide, dur = 0.1, gain = 0.2, a = 0.002, t = 0, echo = 0, detune = 0, cutoff = 0, curve = 'exp', vib = 0, trem = 0 }) {
+  const t0 = ctx.currentTime + t;
+  const o = ctx.createOscillator();
+  if (waves[wave]) o.setPeriodicWave(waves[wave]); else o.type = wave;
+  o.frequency.setValueAtTime(f, t0);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + (slide || dur));
+  if (detune) o.detune.value = detune;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gain, t0 + a);
+  if (curve === 'hold') {
+    g.gain.setValueAtTime(gain, t0 + dur - 0.01);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
+  } else {
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  }
+  let last = o;
+  if (cutoff) { const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = cutoff; o.connect(fl); last = fl; }
+  last.connect(g);
+  if (vib) {
+    const l = ctx.createOscillator(); l.frequency.value = 6; const lg = ctx.createGain(); lg.gain.value = vib;
+    l.connect(lg); lg.connect(o.detune); l.start(t0); l.stop(t0 + dur + 0.05);
+  }
+  if (trem) {
+    const l = ctx.createOscillator(); l.frequency.value = trem; const lg = ctx.createGain(); lg.gain.value = 0.5;
+    const base = ctx.createGain(); base.gain.value = 0.5;
+    l.connect(lg); lg.connect(base.gain); g.connect(base); out(base, echo);
+    l.start(t0); l.stop(t0 + dur + 0.05);
+  } else {
+    out(g, echo);
+  }
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+
+function noise({ type = 'lowpass', freq = 1000, freq2, q = 1, dur = 0.1, gain = 0.2, t = 0, echo = 0 }) {
+  const t0 = ctx.currentTime + t;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+  const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(freq, t0); fl.Q.value = q;
+  if (freq2) fl.frequency.exponentialRampToValueAtTime(freq2, t0 + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  src.connect(fl); fl.connect(g); out(g, echo);
+  src.start(t0); src.stop(t0 + dur + 0.02);
+}
+
+// 分散和音。notes は Hz の配列。
+function arp(notes, { step = 0.05, dur = 0.12, wave = 'pulse25', gain = 0.14, t = 0, echo = 0.3, detune = 0 }) {
+  notes.forEach((f, i) => {
+    voice({ wave, f, dur, gain, t: t + i * step, echo });
+    if (detune) voice({ wave, f, dur, gain: gain * 0.6, t: t + i * step, echo, detune });
+  });
+}
+function chord(notes, opts) { arp(notes, { ...opts, step: 0 }); }
+
+function kick(t = 0, level = 1) {
+  voice({ wave: 'sine', f: 160, f2: 45, slide: 0.14, dur: 0.28, gain: 0.9 * level, t });
+  noise({ type: 'lowpass', freq: 2500, dur: 0.015, gain: 0.3 * level, t });
+}
+function snare(t = 0, level = 1) {
+  noise({ type: 'bandpass', freq: 1800, dur: 0.16, gain: 0.45 * level, t, echo: 0.3 });
+  voice({ wave: 'triangle', f: 190, dur: 0.08, gain: 0.3 * level, t });
+}
+
+// ============================================================ 現行の再現（audio.ts と同じ）
+const cur = {
+  tone(f, dur, wave = 'square', gain = 0.25, t = 0, slideTo) { voice({ wave, f, f2: slideTo, dur, gain, t, a: 0 }); },
+  noise(dur, gain = 0.2, t = 0, lowpass = 800) { noise({ type: 'lowpass', freq: lowpass, dur, gain, t }); },
+  swap() { cur.tone(880, 0.04, 'square', 0.08); },
+  move() { cur.tone(1320, 0.02, 'square', 0.04); },
+  match(panels, chain) {
+    const base = 440 * Math.pow(1.12, Math.min(12, chain - 1) + (panels >= 4 ? 1 : 0));
+    cur.tone(base, 0.08, 'triangle', 0.2);
+    if (chain >= 2 || panels >= 4) [1, 1.25, 1.5, 2].forEach((m, i) => cur.tone(base * m, 0.12, 'square', 0.14, 0.05 + i * 0.05));
+  },
+  pop(i, t = 0) { const f = 520 * Math.pow(1.06, i); cur.tone(f, 0.09, 'square', 0.18, t, f * 1.5); },
+  land() { cur.tone(160, 0.04, 'triangle', 0.08); },
+  garbageLand(h) { cur.noise(0.12 + h * 0.04, 0.3 + Math.min(0.4, h * 0.05), 0, 400); cur.tone(70, 0.2, 'sine', 0.3); },
+  garbageTransform() { [0, 1, 2].forEach((i) => cur.tone(330 + i * 110, 0.08, 'square', 0.1, i * 0.06)); },
+  attack() { cur.tone(220, 0.15, 'sawtooth', 0.12, 0, 110); },
+  gameOver() { [0, 1, 2, 3].forEach((i) => cur.tone(440 / Math.pow(1.3, i), 0.3, 'square', 0.2, i * 0.22)); },
+  select() { cur.tone(660, 0.06, 'square', 0.12); cur.tone(990, 0.1, 'square', 0.12, 0.06); },
+};
+
+// ============================================================ 候補
+// 各候補は fn(args) で鳴る。params があれば同じ候補にボタンを複数出す。
+const POP_SEQ = [{ label: '1枚', args: [0] }, { label: '5枚連続', args: ['seq', 5] }, { label: '10枚連続', args: ['seq', 10] }];
+function popSeq(fn, args) {
+  if (args[0] === 'seq') { for (let i = 0; i < args[1]; i++) fn(i, i * 0.15); }
+  else fn(args[0], 0);
+}
+
+const EVENTS = [
+  {
+    id: 'swap', name: '入れ替え', desc: 'パネルを左右に入れ替えたとき。1ゲームで最も多く鳴るので短く軽く。',
+    cur: () => cur.swap(),
+    cands: {
+      A: { hint: '25%パルスの短い上昇「キュッ」', fn: () => voice({ wave: 'pulse25', f: n('e6'), f2: n('a6'), dur: 0.05, gain: 0.14, echo: 0.15 }) },
+      B: { hint: '三角波2音の跳ね', fn: () => { voice({ wave: 'triangle', f: n('a5'), dur: 0.04, gain: 0.2 }); voice({ wave: 'triangle', f: n('e6'), dur: 0.05, gain: 0.15, t: 0.03 }); } },
+      C: { hint: 'ノイズ混じりのスナップ', fn: () => { noise({ type: 'highpass', freq: 4000, dur: 0.03, gain: 0.25 }); voice({ wave: 'sine', f: 1200, f2: 600, dur: 0.05, gain: 0.2 }); } },
+    },
+  },
+  {
+    id: 'move', name: 'カーソル移動', desc: 'カーソル移動とメニューの項目移動。入れ替えより目立たないこと。',
+    cur: () => cur.move(),
+    cands: {
+      A: { hint: '三角波の極短ティック', fn: () => voice({ wave: 'triangle', f: n('g6'), dur: 0.03, gain: 0.15 }) },
+      B: { hint: '12.5%パルスの2音ティック', fn: () => { voice({ wave: 'pulse12', f: n('c6'), dur: 0.015, gain: 0.1 }); voice({ wave: 'pulse12', f: n('e6'), dur: 0.02, gain: 0.1, t: 0.02 }); } },
+      C: { hint: '正弦波の下降ブリップ', fn: () => voice({ wave: 'sine', f: 1800, f2: 1400, dur: 0.04, gain: 0.2 }) },
+    },
+  },
+  {
+    id: 'match', name: '揃った', desc: '3枚以上揃った瞬間。連鎖数と枚数で音程が上がる。',
+    params: [{ label: '3枚', args: [3, 1] }, { label: '4枚', args: [4, 1] }, { label: '連鎖x2', args: [3, 2] }, { label: '連鎖x4', args: [3, 4] }, { label: '5枚 x3', args: [5, 3] }],
+    cur: (p, c) => cur.match(p, c),
+    cands: {
+      A: { hint: 'メジャーの速い分散和音。連鎖で全体が上がり、2連鎖以上で高いきらめきが足される。4枚以上で1音増える',
+        fn: (p, c) => {
+          const base = st(n('c5'), Math.min(12, (c - 1) * 2));
+          const notes = [0, 4, 7, 12].concat(p >= 4 ? [16] : []).map((s) => st(base, s));
+          arp(notes, { step: 0.04, dur: 0.15, gain: 0.16, echo: 0.3 });
+          if (c >= 2) voice({ wave: 'sine', f: base * 4, dur: 0.3, gain: 0.08, t: 0.16, echo: 0.4 });
+        } },
+      B: { hint: '鐘のような和音。連鎖で前に短い上昇音階が付く',
+        fn: (p, c) => {
+          const base = st(n('e5'), Math.min(12, (c - 1) * 2) + (p >= 4 ? 1 : 0));
+          const t = c >= 2 ? 0.12 : 0;
+          if (c >= 2) arp([0, 3, 7, 10, 12].map((s) => st(base / 2, s)), { step: 0.025, dur: 0.08, wave: 'pulse12', gain: 0.1, echo: 0.3 });
+          voice({ wave: 'sine', f: base, dur: 0.35, gain: 0.22, t, echo: 0.35 });
+          voice({ wave: 'sine', f: base * 3, dur: 0.25, gain: 0.06, t, echo: 0.35 });
+          voice({ wave: 'triangle', f: base / 2, dur: 0.2, gain: 0.12, t });
+        } },
+      C: { hint: '「ピロリン」の3音。連鎖で上昇グリッサンドが重なり、4枚以上で和音が足される',
+        fn: (p, c) => {
+          const base = st(n('g5'), Math.min(12, (c - 1) * 2));
+          arp([0, 7, 12].map((s) => st(base, s)), { step: 0.03, dur: 0.08, wave: 'pulse12', gain: 0.15, echo: 0.25 });
+          if (c >= 2) voice({ wave: 'square', f: base, f2: base * 4, dur: 0.25, gain: 0.08, t: 0.08, echo: 0.3 });
+          if (p >= 4) chord([0, 4, 7].map((s) => st(base / 2, s)), { dur: 0.2, gain: 0.08, t: 0.09, echo: 0.3 });
+        } },
+    },
+  },
+  {
+    id: 'pop', name: '1枚ずつ消える', desc: '揃ったパネルが9フレーム(150ms)おきに1枚ずつ消える。枚数が進むほど音程が上がる。',
+    params: POP_SEQ,
+    cur: (...a) => popSeq((i, t) => cur.pop(i, t), a),
+    cands: {
+      A: { hint: '正弦波の「ぽん」。短い下降スライドで丸い音',
+        fn: (...a) => popSeq((i, t) => { const f = 660 * Math.pow(1.08, i); voice({ wave: 'sine', f: f * 1.5, f2: f, slide: 0.03, dur: 0.12, gain: 0.25, t, echo: 0.2 }); voice({ wave: 'triangle', f, dur: 0.08, gain: 0.1, t }); }, a) },
+      B: { hint: '現行寄りの上昇スライドを2オシレータ+エコーで厚く',
+        fn: (...a) => popSeq((i, t) => { const f = 520 * Math.pow(1.06, i); voice({ wave: 'pulse25', f, f2: f * 1.6, dur: 0.09, gain: 0.14, t, echo: 0.25 }); voice({ wave: 'pulse25', f, f2: f * 1.6, dur: 0.09, gain: 0.08, t, echo: 0.25, detune: 8 }); }, a) },
+      C: { hint: '水滴風。高い正弦波の落下と共鳴ノイズ',
+        fn: (...a) => popSeq((i, t) => { const f = 900 * Math.pow(1.06, i); voice({ wave: 'sine', f: f * 2, f2: f * 0.9, slide: 0.06, dur: 0.1, gain: 0.25, t, echo: 0.25 }); noise({ type: 'bandpass', freq: f, q: 8, dur: 0.05, gain: 0.15, t }); }, a) },
+    },
+  },
+  {
+    id: 'chainEnd', name: '連鎖の終わり（新規）', desc: '連鎖が途切れたとき。今は音がない。2連鎖以上で鳴らす想定。',
+    params: [{ label: 'x2', args: [2] }, { label: 'x3', args: [3] }, { label: 'x5', args: [5] }, { label: 'x8', args: [8] }],
+    cands: {
+      A: { hint: '連鎖数ぶん上昇する音階のあと、最高音が長く残る',
+        fn: (c) => {
+          const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+          const k = Math.min(c, 8);
+          const notes = scale.slice(0, k).map((s) => st(n('c5'), s));
+          arp(notes, { step: 0.05, dur: 0.12, gain: 0.14, echo: 0.3 });
+          voice({ wave: 'sine', f: notes[k - 1] * 2, dur: 0.45, gain: 0.12, t: k * 0.05, echo: 0.45 });
+        } },
+      A2: { hint: 'A の最後の長い音を消し、上昇音階だけをエコーで残す',
+        fn: (c) => {
+          const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+          const notes = scale.slice(0, Math.min(c, 8)).map((s) => st(n('c5'), s));
+          arp(notes, { step: 0.05, dur: 0.18, gain: 0.14, echo: 0.45 });
+        } },
+      A3: { hint: 'A の最後を、鈴のような高い和音のきらめきに置き換え',
+        fn: (c) => {
+          const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+          const k = Math.min(c, 8);
+          const notes = scale.slice(0, k).map((s) => st(n('c5'), s));
+          arp(notes, { step: 0.05, dur: 0.12, gain: 0.14, echo: 0.3 });
+          const top = notes[k - 1];
+          for (const [m, g] of [[2, 0.09], [2.5, 0.05], [3, 0.06]]) voice({ wave: 'sine', f: top * m, dur: 0.35, gain: g, t: k * 0.05, echo: 0.5 });
+        } },
+      A4: { hint: 'A の最後を、速いトリル（2音の震え）に置き換え',
+        fn: (c) => {
+          const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+          const k = Math.min(c, 8);
+          const notes = scale.slice(0, k).map((s) => st(n('c5'), s));
+          arp(notes, { step: 0.05, dur: 0.12, gain: 0.14, echo: 0.3 });
+          const top = notes[k - 1];
+          for (let i = 0; i < 6; i++) voice({ wave: 'pulse12', f: i % 2 ? st(top, 2) : top, dur: 0.06, gain: 0.1, t: k * 0.05 + i * 0.035, echo: 0.4 });
+        } },
+      B: { hint: '短いファンファーレ。連鎖数で全体の音程が上がる',
+        fn: (c) => {
+          const base = st(n('c5'), Math.min(6, c - 2));
+          const tri = [0, 4, 7].map((s) => st(base, s));
+          chord(tri, { dur: 0.1, gain: 0.11, echo: 0.3 });
+          chord(tri, { dur: 0.1, gain: 0.11, t: 0.12, echo: 0.3 });
+          chord(tri.concat([base * 2]), { dur: 0.45, gain: 0.11, t: 0.24, echo: 0.35 });
+        } },
+    },
+  },
+  {
+    id: 'land', name: '着地', desc: '落ちたパネルが止まったとき。頻繁に鳴るので控えめ。',
+    cur: () => cur.land(),
+    cands: {
+      A: { hint: '三角波の下降とごく短いノイズ「コッ」', fn: () => { voice({ wave: 'triangle', f: 180, f2: 140, dur: 0.05, gain: 0.12 }); noise({ type: 'lowpass', freq: 1500, dur: 0.02, gain: 0.1 }); } },
+      B: { hint: '正弦波のノック', fn: () => voice({ wave: 'sine', f: 220, f2: 110, dur: 0.06, gain: 0.2 }) },
+      C: { hint: 'ノイズだけの「タッ」', fn: () => noise({ type: 'lowpass', freq: 800, dur: 0.03, gain: 0.15 }) },
+    },
+  },
+  {
+    id: 'garbageLand', name: 'おじゃま着地', desc: 'おじゃまブロックが落ちきったとき。高さで重さが変わる。',
+    params: [{ label: '高さ1', args: [1] }, { label: '高さ3', args: [3] }, { label: '高さ6', args: [6] }],
+    cur: (h) => cur.garbageLand(h),
+    cands: {
+      A: { hint: '現行の「ドスン」を低音・ノイズ・衝撃の3層で重く',
+        fn: (h) => {
+          voice({ wave: 'sine', f: 90, f2: 32, slide: 0.15, dur: 0.35 + h * 0.05, gain: 0.5 });
+          noise({ type: 'lowpass', freq: 300, dur: 0.2 + h * 0.05, gain: 0.4 });
+          voice({ wave: 'square', f: 55, dur: 0.1, gain: 0.15, cutoff: 200 });
+          noise({ type: 'highpass', freq: 3000, dur: 0.06, gain: 0.12 });
+        } },
+      B: { hint: '金属っぽい衝撃。バンドパスノイズが響く',
+        fn: (h) => {
+          voice({ wave: 'square', f: 60, dur: 0.25, gain: 0.15, cutoff: 400 });
+          noise({ type: 'bandpass', freq: 900, q: 3, dur: 0.15 + h * 0.04, gain: 0.35, echo: 0.2 });
+          voice({ wave: 'sine', f: 300, f2: 60, slide: 0.08, dur: 0.12, gain: 0.3 });
+        } },
+      C: { hint: '地響き。低音が揺れながら長く残る',
+        fn: (h) => {
+          voice({ wave: 'sine', f: 70, f2: 40, slide: 0.3, dur: 0.5 + h * 0.08, gain: 0.45, trem: 12 });
+          noise({ type: 'lowpass', freq: 200, dur: 0.5 + h * 0.08, gain: 0.3 });
+          noise({ type: 'lowpass', freq: 2000, dur: 0.04, gain: 0.25 });
+        } },
+    },
+  },
+  {
+    id: 'garbageTransform', name: 'おじゃま変化', desc: 'おじゃまブロックが消えてパネルに変わるとき。',
+    cur: () => cur.garbageTransform(),
+    cands: {
+      A: { hint: 'きらきら上昇する6音', fn: () => arp([0, 4, 7, 12, 16, 19].map((s) => st(n('e5'), s)), { step: 0.04, dur: 0.1, wave: 'pulse12', gain: 0.1, echo: 0.4 }) },
+      B: { hint: '上昇グリッサンドのあとチャイム', fn: () => { voice({ wave: 'sawtooth', f: 300, f2: 1200, dur: 0.3, gain: 0.08, cutoff: 2500, echo: 0.3 }); voice({ wave: 'sine', f: n('e6'), dur: 0.3, gain: 0.15, t: 0.3, echo: 0.4 }); voice({ wave: 'sine', f: n('b6'), dur: 0.3, gain: 0.07, t: 0.3, echo: 0.4 }); } },
+      C: { hint: '砕けるノイズのあと3音', fn: () => { noise({ type: 'bandpass', freq: 2000, q: 1, dur: 0.12, gain: 0.3 }); arp([0, 7, 12].map((s) => st(n('a5'), s)), { step: 0.05, dur: 0.1, wave: 'triangle', gain: 0.15, t: 0.05, echo: 0.3 }); } },
+    },
+  },
+  {
+    id: 'attack', name: '攻撃を送る', desc: '連鎖や同時消しで相手におじゃまを送るとき。',
+    cur: () => cur.attack(),
+    cands: {
+      A: { hint: '「ビューン」。上がって下がるノコギリ波と風切りノイズ',
+        fn: () => { voice({ wave: 'sawtooth', f: 200, f2: 900, dur: 0.18, gain: 0.12, cutoff: 3000, curve: 'hold' }); voice({ wave: 'sawtooth', f: 900, f2: 300, dur: 0.15, gain: 0.12, cutoff: 3000, t: 0.18 }); noise({ type: 'bandpass', freq: 1500, freq2: 4000, q: 2, dur: 0.3, gain: 0.12 }); } },
+      B: { hint: 'レーザー風の下降。2オシレータ+エコー',
+        fn: () => { voice({ wave: 'square', f: 1400, f2: 250, dur: 0.25, gain: 0.12, echo: 0.3 }); voice({ wave: 'square', f: 1400, f2: 250, dur: 0.25, gain: 0.08, echo: 0.3, detune: -15 }); } },
+      C: { hint: '打撃。低音の衝撃と短い「ヒュッ」',
+        fn: () => { voice({ wave: 'sine', f: 150, f2: 40, slide: 0.1, dur: 0.2, gain: 0.4 }); noise({ type: 'highpass', freq: 4000, dur: 0.05, gain: 0.2 }); voice({ wave: 'sawtooth', f: 600, f2: 200, dur: 0.1, gain: 0.08, cutoff: 2000, t: 0.02 }); } },
+    },
+  },
+  {
+    id: 'gameOver', name: '負け', desc: 'エンドレスのゲームオーバー、対戦の負け。BGM が止まったあとに鳴る。',
+    cur: () => cur.gameOver(),
+    cands: {
+      A: { hint: '下降4音のあと低い「ドン」',
+        fn: () => { arp([n('e5'), n('c5'), n('a4'), n('f4')], { step: 0.22, dur: 0.28, gain: 0.15, echo: 0.3, detune: 8 }); voice({ wave: 'sine', f: 80, f2: 40, slide: 0.3, dur: 0.6, gain: 0.4, t: 0.9 }); noise({ type: 'lowpass', freq: 300, dur: 0.3, gain: 0.3, t: 0.9 }); } },
+      B: { hint: 'テープが止まるように音程が滑り落ちる',
+        fn: () => { voice({ wave: 'square', f: 880, f2: 110, dur: 1.2, gain: 0.12, cutoff: 3000 }); voice({ wave: 'triangle', f: 440, f2: 55, dur: 1.2, gain: 0.2 }); noise({ type: 'lowpass', freq: 400, freq2: 100, dur: 1.2, gain: 0.12 }); } },
+      C: { hint: '半音で下がる短調フレーズのあと短調の和音',
+        fn: () => { arp(['e5', 'd#5', 'd5', 'c#5', 'c5', 'b4'].map(n), { step: 0.13, dur: 0.15, gain: 0.14, echo: 0.3 }); chord(['a3', 'c4', 'e4'].map(n), { dur: 0.9, gain: 0.12, t: 0.8, wave: 'triangle', echo: 0.4 }); } },
+    },
+  },
+  {
+    id: 'win', name: '勝ち（新規）', desc: '対戦・CPU 戦で勝ったとき。今は音がない。',
+    cands: {
+      A: { hint: 'ファンファーレ「タタタ・ター・ター」とキック',
+        fn: () => {
+          const seq = [['c5', 0, 0.1], ['c5', 0.12, 0.1], ['c5', 0.24, 0.1], ['e5', 0.36, 0.2], ['g5', 0.6, 0.6]];
+          for (const [nm, t, dur] of seq) { voice({ wave: 'pulse25', f: n(nm), dur, gain: 0.15, t, echo: 0.3, curve: dur > 0.3 ? 'exp' : 'hold' }); voice({ wave: 'pulse25', f: n(nm), dur, gain: 0.09, t, echo: 0.3, detune: 6 }); }
+          chord(['c4', 'e4', 'g4'].map(n), { dur: 0.7, gain: 0.1, t: 0.6, wave: 'triangle', echo: 0.3 });
+          kick(0); kick(0.6);
+        } },
+      B: { hint: 'ハープの上昇と高い和音のきらめき',
+        fn: () => {
+          arp(['c5', 'd5', 'e5', 'g5', 'a5', 'c6', 'd6', 'e6'].map(n), { step: 0.045, dur: 0.25, wave: 'triangle', gain: 0.14, echo: 0.4 });
+          chord(['c6', 'e6', 'g6'].map(n), { dur: 0.8, gain: 0.1, t: 0.4, wave: 'sine', echo: 0.5 });
+          voice({ wave: 'sine', f: n('c7'), dur: 0.5, gain: 0.05, t: 0.5, echo: 0.5 });
+        } },
+      C: { hint: '決めポーズ風の4つのスタブとドラム',
+        fn: () => {
+          const chords = [['c5', 'e5', 'g5'], ['f5', 'a5', 'c6'], ['g5', 'b5', 'd6'], ['c6', 'e6', 'g6']];
+          chords.forEach((c, i) => { chord(c.map(n), { dur: i === 3 ? 0.6 : 0.15, gain: 0.1, t: i * 0.18, echo: 0.3 }); kick(i * 0.18, 0.8); });
+          snare(0.54);
+        } },
+    },
+  },
+  {
+    id: 'select', name: 'メニュー決定', desc: 'メニューで項目を決めたとき。',
+    cur: () => cur.select(),
+    cands: {
+      A: { hint: '2音上昇のパルス+エコー', fn: () => { voice({ wave: 'pulse25', f: n('g5'), dur: 0.06, gain: 0.14, echo: 0.3 }); voice({ wave: 'pulse25', f: n('c6'), dur: 0.18, gain: 0.14, t: 0.06, echo: 0.3 }); } },
+      B: { hint: '和音のスタブのあと高い1音', fn: () => { chord(['c5', 'e5', 'g5'].map(n), { dur: 0.1, gain: 0.08, echo: 0.3 }); voice({ wave: 'sine', f: n('c6'), dur: 0.25, gain: 0.15, t: 0.08, echo: 0.4 }); } },
+      C: { hint: '「ピロッ」の速い3音', fn: () => arp(['c6', 'e6', 'g6'].map(n), { step: 0.025, dur: 0.07, wave: 'pulse12', gain: 0.12, echo: 0.3 }) },
+    },
+  },
+  {
+    id: 'start', name: 'ゲーム開始（新規）', desc: 'ゲーム画面に入ったとき。今は音がない。',
+    cands: {
+      A: { hint: 'キックと「ピッ、ポーン」', fn: () => { kick(0); voice({ wave: 'pulse25', f: n('g5'), dur: 0.08, gain: 0.14, echo: 0.3 }); voice({ wave: 'pulse25', f: n('c6'), dur: 0.25, gain: 0.14, t: 0.12, echo: 0.3 }); } },
+      B: { hint: 'ホイッスル', fn: () => voice({ wave: 'sine', f: n('a6'), dur: 0.35, gain: 0.2, a: 0.02, vib: 30, echo: 0.3 }) },
+      C: { hint: '短いファンファーレ3音+スネア', fn: () => { arp(['c5', 'g5', 'c6'].map(n), { step: 0.09, dur: 0.12, gain: 0.14, echo: 0.3 }); snare(0.27); } },
+    },
+  },
+  {
+    id: 'pause', name: '一時停止と解除（新規）', desc: 'P キーとタブ切り替え。今は音がない。',
+    params: [{ label: '停止', args: ['pause'] }, { label: '解除', args: ['resume'] }],
+    cands: {
+      A: { hint: '三角波2音。停止は下降、解除は上昇', fn: (k) => { const [a, b] = k === 'pause' ? ['c6', 'g5'] : ['g5', 'c6']; voice({ wave: 'triangle', f: n(a), dur: 0.06, gain: 0.18 }); voice({ wave: 'triangle', f: n(b), dur: 0.12, gain: 0.18, t: 0.06 }); } },
+      B: { hint: '停止は低い「ブッ」、解除は高い「ピッ」', fn: (k) => k === 'pause' ? voice({ wave: 'square', f: 200, dur: 0.12, gain: 0.1, cutoff: 800 }) : voice({ wave: 'sine', f: 1200, dur: 0.08, gain: 0.2 }) },
+    },
+  },
+  {
+    id: 'levelUp', name: 'スピードレベル上昇（新規）', desc: 'エンドレスでせり上がりが速くなったとき。今は音がない。',
+    cands: {
+      A: { hint: '4音の上昇分散和音と高い残響', fn: () => { const ns = [0, 4, 7, 12].map((s) => st(n('g5'), s)); arp(ns, { step: 0.05, dur: 0.12, gain: 0.13, echo: 0.3 }); voice({ wave: 'sine', f: ns[3] * 2, dur: 0.3, gain: 0.08, t: 0.2, echo: 0.4 }); } },
+      B: { hint: '鐘2音', fn: () => { for (const [nm, t] of [['g5', 0], ['d6', 0.12]]) { voice({ wave: 'sine', f: n(nm), dur: 0.35, gain: 0.2, t, echo: 0.4 }); voice({ wave: 'sine', f: n(nm) * 3, dur: 0.2, gain: 0.05, t, echo: 0.4 }); } } },
+    },
+  },
+  {
+    id: 'danger', name: '危険状態に入った（新規）', desc: 'パネルが上から3段目に届いたとき。今は BGM のテンポが上がるだけ。',
+    cands: {
+      A: { hint: '低いブザー2回', fn: () => { for (const t of [0, 0.15]) voice({ wave: 'square', f: n('a3'), dur: 0.1, gain: 0.1, cutoff: 800, t, curve: 'hold' }); } },
+      B: { hint: 'サイレン風の上下', fn: () => { voice({ wave: 'sine', f: 600, f2: 800, dur: 0.2, gain: 0.1, curve: 'hold' }); voice({ wave: 'sine', f: 800, f2: 600, dur: 0.2, gain: 0.1, t: 0.2 }); } },
+      C: { hint: '小さな鈴を2回「チリン、チリン」', fn: () => { for (const t of [0, 0.2]) { voice({ wave: 'sine', f: n('e7'), dur: 0.25, gain: 0.12, t, echo: 0.5 }); voice({ wave: 'sine', f: n('b7'), dur: 0.15, gain: 0.04, t, echo: 0.5 }); } } },
+      D: { hint: '妖精のささやき。高いパルスの速い下降モチーフ', fn: () => arp(['a6', 'g6', 'e6', 'd6'].map(n), { step: 0.045, dur: 0.1, wave: 'pulse12', gain: 0.09, echo: 0.45 }) },
+      E: { hint: '木琴風の低めの2音。柔らかい警告', fn: () => { for (const [nm, t] of [['a4', 0], ['e4', 0.14]]) { voice({ wave: 'triangle', f: n(nm), dur: 0.14, gain: 0.2, t, echo: 0.3 }); voice({ wave: 'sine', f: n(nm) * 4, dur: 0.05, gain: 0.05, t }); } } },
+    },
+  },
+  {
+    id: 'panic', name: '天井に触れた（新規）', desc: 'パネルが天井に触れ、猶予時間に入ったとき。今は枠が点滅するだけ。',
+    cands: {
+      A: { hint: '心臓の鼓動風の低音2回', fn: () => { for (const t of [0, 0.18]) voice({ wave: 'sine', f: 70, f2: 45, slide: 0.08, dur: 0.15, gain: 0.4, t }); } },
+      B: { hint: '高い警告音の速い交互', fn: () => { [1000, 800, 1000, 800].forEach((f, i) => voice({ wave: 'square', f, dur: 0.06, gain: 0.08, cutoff: 3000, t: i * 0.07, curve: 'hold' })); } },
+      C: { hint: '鈴の速い連打4回', fn: () => { for (let i = 0; i < 4; i++) { voice({ wave: 'sine', f: n('c7'), dur: 0.12, gain: 0.12, t: i * 0.08, echo: 0.4 }); voice({ wave: 'sine', f: n('g7'), dur: 0.08, gain: 0.04, t: i * 0.08, echo: 0.4 }); } } },
+      D: { hint: '鼓動の低音に鈴を重ねる', fn: () => { for (const t of [0, 0.18]) { voice({ wave: 'sine', f: 70, f2: 45, slide: 0.08, dur: 0.15, gain: 0.35, t }); voice({ wave: 'sine', f: n('e7'), dur: 0.12, gain: 0.08, t, echo: 0.4 }); } } },
+      E: { hint: 'ハープの速い下降。落ちていく感じ', fn: () => arp(['e6', 'c6', 'a5', 'e5', 'c5', 'a4'].map(n), { step: 0.04, dur: 0.15, wave: 'triangle', gain: 0.14, echo: 0.4 }) },
+    },
+  },
+];
+
+// ============================================================ BGM（聞きながら確認する用。ゲーム曲を簡略化）
+let bgmTimer = null;
+function startBgm() {
+  if (bgmTimer) return;
+  const chords = [['d4', 'f#4', 'a4', 'c#5'], ['b3', 'd4', 'f#4', 'a4'], ['g3', 'b3', 'd4', 'f#4'], ['a3', 'c#4', 'e4', 'g4']];
+  const bassN = ['d2', 'b1', 'g2', 'a2'];
+  let bar = 0;
+  const beat = 60 / 96;
+  const tick = () => {
+    const c = chords[bar % 4];
+    const t0 = 0.05;
+    for (let i = 0; i < 8; i++) {
+      voice({ wave: 'pulse25', f: n(c[[0, 1, 2, 3, 2, 1][i % 6]]), dur: 0.15, gain: 0.05, t: t0 + i * beat / 2, echo: 0.3 });
+    }
+    for (const [nm, t, dur] of [[bassN[bar % 4], 0, beat * 1.4], [bassN[bar % 4], beat * 2, beat]]) voice({ wave: 'triangle', f: n(nm), dur, gain: 0.22, t: t0 + t, cutoff: 600, curve: 'hold' });
+    chord(c.map(n), { dur: beat * 4, gain: 0.025, t: t0, wave: 'pulse25', echo: 0.4 });
+    kick(t0, 0.5); snare(t0 + beat, 0.4); kick(t0 + beat * 2, 0.5); snare(t0 + beat * 3, 0.4);
+    bar++;
+    bgmTimer = setTimeout(tick, beat * 4 * 1000);
+  };
+  tick();
+}
+function stopBgm() { clearTimeout(bgmTimer); bgmTimer = null; }
+
+// ============================================================ UI
+const CHOSEN = { swap: 'A', move: 'A', match: 'A', pop: 'B', chainEnd: 'A系（要調整）', land: 'A', garbageLand: 'A', garbageTransform: 'A', attack: 'B', gameOver: 'C', win: 'B', select: 'C', start: 'A', pause: 'A', levelUp: 'A', danger: '未定', panic: '未定' };
+const list = document.getElementById('list');
+for (const ev of EVENTS) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2><span class="id">${ev.id}</span>${ev.name}${CHOSEN[ev.id] ? ` <span style="color:#8fd68f;font-size:12px;font-weight:normal">選択: ${CHOSEN[ev.id]}</span>` : ''}</h2><p class="desc">${ev.desc}</p>`;
+  const rows = [];
+  if (ev.cur) rows.push({ label: '現行', cls: 'cur', fn: ev.cur });
+  for (const [k, c] of Object.entries(ev.cands)) rows.push({ label: k, cls: 'main', fn: c.fn, hint: c.hint });
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div class="label ${r.cls === 'cur' ? 'cur' : ''}">${r.label}</div><div class="body"><div class="btns"></div>${r.hint ? `<div class="hint">${r.hint}</div>` : ''}</div>`;
+    const btns = row.querySelector('.btns');
+    const params = ev.params || [{ label: '再生', args: [] }];
+    for (const p of params) {
+      const b = document.createElement('button');
+      b.className = r.cls;
+      b.textContent = p.label;
+      b.addEventListener('click', () => { init(); r.fn(...p.args); });
+      btns.appendChild(b);
+    }
+    card.appendChild(row);
+  }
+  list.appendChild(card);
+}
+document.getElementById('vol').addEventListener('input', (e) => { if (master) master.gain.value = Number(e.target.value); });
+document.getElementById('echo').addEventListener('change', (e) => { if (echoOut) echoOut.gain.value = e.target.checked ? 1 : 0; });
+document.getElementById('bgm').addEventListener('change', (e) => { init(); if (e.target.checked) startBgm(); else stopBgm(); });
+</script>
+</body>
+</html>

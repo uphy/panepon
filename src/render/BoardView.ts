@@ -77,9 +77,11 @@ export class BoardView {
     this.startTime = scene.time.now;
   }
 
-  /** Board のイベントを音と演出に変える。tick 直後に呼ぶ。 */
+  /** 1枚ずつ消える音の通し番号。揃うたびに 0 に戻し、tick をまたいでも音程が上がり続けるようにする。 */
+  private popIndex = 0;
+
+  /** Board のイベントを音と演出に変える。tick 直後に呼ぶ。負け・勝ちの音は GameScene が鳴らす。 */
   handleEvents(events: BoardEvent[], soundOn: boolean): void {
-    let popIndex = 0;
     for (const e of events) {
       switch (e.type) {
         case "swap":
@@ -89,11 +91,15 @@ export class BoardView {
           if (soundOn) audio.move();
           break;
         case "match":
+          this.popIndex = 0;
           if (soundOn) audio.match(e.panels, e.chain);
           this.popup(e.x, e.y, e.panels, e.chain);
           break;
         case "pop":
-          if (soundOn) audio.pop(popIndex++);
+          if (soundOn) audio.pop(this.popIndex++);
+          break;
+        case "chainEnd":
+          if (soundOn && e.chain >= 2) audio.chainEnd(e.chain);
           break;
         case "land":
           if (soundOn) audio.land();
@@ -107,8 +113,14 @@ export class BoardView {
         case "attack":
           if (soundOn) audio.attack();
           break;
-        case "gameOver":
-          if (soundOn) audio.gameOver();
+        case "levelUp":
+          if (soundOn) audio.levelUp();
+          break;
+        case "danger":
+          if (soundOn && e.on) audio.dangerWarn();
+          break;
+        case "panic":
+          if (soundOn && e.on) audio.panicWarn();
           break;
         default:
           break;

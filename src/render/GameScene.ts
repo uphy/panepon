@@ -137,7 +137,8 @@ export class GameScene extends Phaser.Scene {
 
     audio.start();
     audio.setDanger(false);
-    if (params.get("bgm") !== "0") audio.startBgm();
+    audio.gameStart();
+    audio.startBgm("game");
 
     // e2e とデバッグ用。
     (window as unknown as { __panepon: unknown }).__panepon = {
@@ -163,6 +164,7 @@ export class GameScene extends Phaser.Scene {
     if (this.paused === on) return;
     this.paused = on;
     this.pauseText.setVisible(on);
+    audio.pause(on);
     if (on) {
       audio.suspend();
     } else {
@@ -211,14 +213,17 @@ export class GameScene extends Phaser.Scene {
 
   private finish(): void {
     this.ended = true;
-    audio.stopBgm();
+    const g = this.game_;
+    // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音
+    const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" && g.winner === 0;
+    if (humanWon) audio.win();
+    else audio.lose();
     // 結果表示のあと、盤面の中をタップ（クリック）するとやり直す
     this.time.delayedCall(800, () => {
       this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
         if (this.touches.some((t) => t.cellAt(p.x, p.y))) this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
       });
     });
-    const g = this.game_;
     if (this.mode === "endless") {
       const b = g.boards[0];
       const rank = recordEndless(b.score, b.maxChain);
