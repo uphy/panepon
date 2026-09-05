@@ -266,6 +266,9 @@ export class BgmPlayer {
   start(name: SongName): void {
     if (this.current === name) return;
     this.stop();
+    const now = this.ctx.currentTime;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setValueAtTime(1, now);
     this.current = name;
     this.song = this.songs[name];
     this.feedback.gain.value = this.song.echoFeedback;
@@ -274,10 +277,14 @@ export class BgmPlayer {
     this.tick();
   }
 
+  /** 止める。予約済みの音も出力ごと素早く絞り、止めた直後に1音だけ漏れないようにする。 */
   stop(): void {
     if (this.timer !== null) window.clearTimeout(this.timer);
     this.timer = null;
     this.current = null;
+    const now = this.ctx.currentTime;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setTargetAtTime(0, now, 0.01);
   }
 
   /** 危険状態でテンポを速くする。 */
