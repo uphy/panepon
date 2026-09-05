@@ -1,0 +1,795 @@
+import {
+  COLS,
+  DANGER_ROW,
+  DEFAULT_KINDS,
+  PANELS_PER_LEVEL,
+  ROWS,
+  TIMING,
+  TOTAL_ROWS,
+  riseFramesPerRow,
+} from "./constants";
+import { garbageFromChain, garbageFromCombo, type GarbageSpec } from "./garbage";
+import { Rng } from "./rng";
+import { capScore, matchScore } from "./scoring";
+import {
+  EMPTY,
+  NO_INPUT,
+  type BoardEvent,
+  type BoardOptions,
+  type Cell,
+  type GarbageBlock,
+  type Input,
+  type Kind,
+} from "./types";
+
+export function emptyCell(): Cell {
+  return {
+    kind: EMPTY,
+    garbage: -1,
+    state: "idle",
+    timer: 0,
+    fallTimer: 0,
+    chain: false,
+    swapFrom: 0,
+    popAt: 0,
+    removeAt: 0,
+    revealKind: EMPTY,
+    revealAt: 0,
+  };
+}
+
+function panelCell(kind: Kind): Cell {
+  const c = emptyCell();
+  c.kind = kind;
+  return c;
+}
+
+export function isPanel(c: Cell): boolean {
+  return c.kind !== EMPTY && c.garbage < 0;
+}
+
+export function isEmptyCell(c: Cell): boolean {
+  return c.kind === EMPTY && c.garbage < 0;
+}
+
+/**
+ * 1人分の盤面。描画やDOMに依存しない純粋なシミュレーション。
+ * `tick(input)` を60fpsで呼ぶと1フレーム進む。
+ */
+export class Board {
+  /** cells[row][col]。row 0 が最下段。 */
+  readonly cells: Cell[][];
+  /** 盤面の下に見えている「次にせり上がる行」。 */
+  nextRow: Kind[] = [];
+  readonly cursor = { x: 2, y: 5 };
+
+  riseProgress = 0;
+  stopTimer = 0;
+  shakeTimer = 0;
+  deathTimer = 0;
+  /** 現在の連鎖数。1は連鎖していない状態。 */
+  chain = 1;
+  maxChain = 1;
+  score = 0;
+  panelsCleared = 0;
+  level: number;
+  frame = 0;
+  gameOver = false;
+  danger = false;
+  panic = false;
+  /** 相手から送られて、まだ降っていないおじゃま。 */
+  pendingGarbage: GarbageSpec[] = [];
+  /** このフレームで相手に送る攻撃。Game が回収して相手に渡す。 */
+  attacksOut: GarbageSpec[] = [];
+  /** このフレームで起きた出来事。描画・音の層が読む。 */
+  events: BoardEvent[] = [];
+  readonly garbage = new Map<number, GarbageBlock>();
+  readonly stats = { combos: 0, chains: 0, manualRows: 0 };
+
+  private nextGarbageId = 1;
+  private readonly rng: Rng;
+  readonly kinds: number;
+  private readonly startLevel: number;
+  private readonly speedUp: boolean;
+  private readonly noRise: boolean;
+  private stopRaiseFree = false;
+  private dropSide = 0;
+
+  constructor(opts: BoardOptions) {
+    this.rng = new Rng(opts.seed);
+    this.kinds = opts.kinds ?? DEFAULT_KINDS;
+    this.startLevel = opts.speedLevel ?? 1;
+    this.level = this.startLevel;
+    this.speedUp = opts.speedUp ?? false;
+    this.noRise = opts.noRise ?? false;
+    this.cells = [];
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      const row: Cell[] = [];
+      for (let c = 0; c < COLS; c++) row.push(emptyCell());
+      this.cells.push(row);
+    }
+    const h = opts.initialHeight ?? 5;
+    if (h > 0) this.fillInitial(h);
+    this.nextRow = this.generateRow();
+  }
+
+  // ---------------------------------------------------------------- helpers
+
+  cell(x: number, y: number): Cell {
+    return this.cells[y][x];
+  }
+
+  /** テスト用。列ごとに下から並べた柄で盤面を置き換える。 */
+  setColumns(columns: Kind[][]): void {
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) this.cells[r][c] = emptyCell();
+    }
+    columns.forEach((col, x) => {
+      col.forEach((kind, y) => {
+        this.cells[y][x] = panelCell(kind);
+      });
+    });
+    this.garbage.clear();
+  }
+
+  /** テスト・デバッグ用。上から下へ1行ずつ、柄を数字で表す。 */
+  toString(): string {
+    const lines: string[] = [];
+    for (let r = ROWS - 1; r >= 0; r--) {
+      let line = "";
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.cells[r][c];
+        if (cell.garbage >= 0) line += "#";
+        else if (cell.kind === EMPTY) line += ".";
+        else line += String(cell.kind);
+      }
+      lines.push(line);
+    }
+    return lines.join("\n");
+  }
+
+  private emit(e: BoardEvent): void {
+    this.events.push(e);
+  }
+
+  private randomKind(): Kind {
+    return this.rng.int(this.kinds);
+  }
+
+  private fillInitial(height: number): void {
+    for (let c = 0; c < COLS; c++) {
+      const h = Math.max(1, Math.min(ROWS - 4, height + this.rng.int(3) - 1));
+      for (let r = 0; r < h; r++) {
+        this.cells[r][c] = panelCell(this.pickKind(c, r));
+      }
+    }
+  }
+
+  /** 縦横に3つ揃わない柄を選ぶ。 */
+  private pickKind(x: number, y: number, row?: Kind[]): Kind {
+    const banned = new Set<Kind>();
+    const kindAt = (cx: number, cy: number): Kind => {
+      if (row && cy === y) return cx >= 0 ? row[cx] ?? EMPTY : EMPTY;
+      if (cx < 0 || cy < 0 || cy >= TOTAL_ROWS) return EMPTY;
+      const cell = this.cells[cy][cx];
+      return isPanel(cell) ? cell.kind : EMPTY;
+    };
+    const left1 = kindAt(x - 1, y);
+    const left2 = kindAt(x - 2, y);
+    if (left1 !== EMPTY && left1 === left2) banned.add(left1);
+    const below1 = kindAt(x, y - 1);
+    const below2 = kindAt(x, y - 2);
+    if (below1 !== EMPTY && below1 === below2) banned.add(below1);
+    let k = this.randomKind();
+    let guard = 0;
+    while (banned.has(k) && guard++ < 32) k = this.randomKind();
+    return k;
+  }
+
+  /** 次にせり上がる行。直上の柄と同じにならないようにする。 */
+  private generateRow(): Kind[] {
+    const row: Kind[] = [];
+    for (let c = 0; c < COLS; c++) {
+      const above = this.cells[0][c];
+      const banned = new Set<Kind>();
+      if (isPanel(above)) banned.add(above.kind);
+      if (c >= 2 && row[c - 1] === row[c - 2]) banned.add(row[c - 1]);
+      let k = this.randomKind();
+      let guard = 0;
+      while (banned.has(k) && guard++ < 32) k = this.randomKind();
+      row.push(k);
+    }
+    return row;
+  }
+
+  private hasMatched(): boolean {
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const s = this.cells[r][c].state;
+        if (s === "matched" || s === "popped") return true;
+      }
+    }
+    return false;
+  }
+
+  private hasTransforming(): boolean {
+    for (const g of this.garbage.values()) if (g.state === "transforming") return true;
+    return false;
+  }
+
+  private topTouching(): boolean {
+    for (let c = 0; c < COLS; c++) {
+      if (!isEmptyCell(this.cells[ROWS - 1][c])) return true;
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------ tick
+
+  tick(input: Input = NO_INPUT): void {
+    this.events = [];
+    this.attacksOut = [];
+    if (this.gameOver) return;
+    this.frame++;
+
+    this.handleInput(input);
+    this.updateCells();
+    this.updateGarbageTimers();
+    this.applyGravity();
+    this.applyGarbageGravity();
+    this.findMatches();
+    this.clearStaleChainFlags();
+    this.dropPendingGarbage();
+    this.updateRise(input);
+    this.updateChainEnd();
+    this.updateStatus();
+  }
+
+  // ----------------------------------------------------------------- input
+
+  private handleInput(input: Input): void {
+    const { cursor } = this;
+    const nx = Math.max(0, Math.min(COLS - 2, cursor.x + input.moveX));
+    const ny = Math.max(0, Math.min(ROWS - 1, cursor.y + input.moveY));
+    if (nx !== cursor.x || ny !== cursor.y) {
+      cursor.x = nx;
+      cursor.y = ny;
+      this.emit({ type: "move" });
+    }
+    if (input.swap) this.trySwap();
+  }
+
+  /** カーソル位置の2枚を入れ替える。成功したら true。 */
+  trySwap(): boolean {
+    const { x, y } = this.cursor;
+    const a = this.cells[y][x];
+    const b = this.cells[y][x + 1];
+    if (a.garbage >= 0 || b.garbage >= 0) return false;
+    if (a.kind === EMPTY && b.kind === EMPTY) return false;
+    const swappable = (c: Cell): boolean =>
+      c.kind === EMPTY || c.state === "idle" || c.state === "swapping";
+    if (!swappable(a) || !swappable(b)) return false;
+    // 空白側に、上から落ちてくる最中のパネルが着地する寸前でも入れ替えは通す（割り込ませ）。
+    this.cells[y][x] = b;
+    this.cells[y][x + 1] = a;
+    for (const [c, from] of [
+      [b, 1],
+      [a, -1],
+    ] as const) {
+      c.chain = false;
+      if (c.kind === EMPTY) continue;
+      c.state = "swapping";
+      c.timer = TIMING.swap;
+      c.swapFrom = from;
+    }
+    this.emit({ type: "swap" });
+    return true;
+  }
+
+  // ----------------------------------------------------------------- cells
+
+  private updateCells(): void {
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.cells[r][c];
+        if (!isPanel(cell)) continue;
+        switch (cell.state) {
+          case "swapping":
+            if (--cell.timer <= 0) {
+              cell.state = "idle";
+              cell.swapFrom = 0;
+            }
+            break;
+          case "hover":
+            if (--cell.timer <= 0) {
+              cell.state = "falling";
+              cell.fallTimer = 0;
+            }
+            break;
+          case "matched":
+          case "popped":
+            cell.popAt--;
+            cell.removeAt--;
+            if (cell.state === "matched" && cell.popAt <= 0) {
+              cell.state = "popped";
+              this.emit({ type: "pop", x: c, y: r, index: 0 });
+            }
+            if (cell.removeAt <= 0) {
+              this.cells[r][c] = emptyCell();
+              this.flagChainAbove(c, r + 1);
+            }
+            break;
+          default:
+            break;
+        }
+      }
+    }
+  }
+
+  /** 消えたパネルの上に乗っていたパネル群に連鎖フラグを付ける。 */
+  private flagChainAbove(x: number, fromRow: number): void {
+    for (let r = fromRow; r < TOTAL_ROWS; r++) {
+      const cell = this.cells[r][x];
+      if (isEmptyCell(cell)) break;
+      if (cell.garbage >= 0) break;
+      if (cell.state === "matched" || cell.state === "popped") break;
+      cell.chain = true;
+    }
+  }
+
+  // ---------------------------------------------------------------- gravity
+
+  private applyGravity(): void {
+    for (let r = 1; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.cells[r][c];
+        if (!isPanel(cell)) continue;
+        const below = this.cells[r - 1][c];
+        if (cell.state === "idle") {
+          if (isEmptyCell(below)) this.startHover(c, r, cell.chain ? TIMING.hoverClear : TIMING.hoverSwap);
+          continue;
+        }
+        if (cell.state === "falling") {
+          if (this.blocksFall(below)) {
+            this.land(c, r);
+            continue;
+          }
+          cell.fallTimer++;
+          if (cell.fallTimer >= TIMING.fallPerRow && isEmptyCell(below)) {
+            cell.fallTimer = 0;
+            this.cells[r - 1][c] = cell;
+            this.cells[r][c] = emptyCell();
+            if (r - 1 === 0 || this.blocksFall(this.cells[r - 2][c])) this.land(c, r - 1);
+          }
+        }
+      }
+    }
+  }
+
+  /** 落下中のパネルがこのセルの上で止まるか。空、または同じく落下・浮遊中なら止まらない。 */
+  private blocksFall(cell: Cell): boolean {
+    if (isEmptyCell(cell)) return false;
+    if (isPanel(cell)) return cell.state !== "falling" && cell.state !== "hover";
+    const g = this.garbage.get(cell.garbage);
+    return !g || (g.state !== "falling" && g.state !== "hover");
+  }
+
+  /** 空中に出たパネルと、その上に積まれたパネル群をまとめて浮遊状態にする。 */
+  private startHover(x: number, y: number, frames: number): void {
+    for (let r = y; r < TOTAL_ROWS; r++) {
+      const cell = this.cells[r][x];
+      if (!isPanel(cell) || cell.state !== "idle") break;
+      if (frames <= 0) {
+        cell.state = "falling";
+        cell.fallTimer = 0;
+      } else {
+        cell.state = "hover";
+        cell.timer = frames;
+      }
+    }
+  }
+
+  private land(x: number, y: number): void {
+    const cell = this.cells[y][x];
+    cell.state = "idle";
+    cell.fallTimer = 0;
+    if (y < ROWS) this.emit({ type: "land", x, y });
+  }
+
+  // ---------------------------------------------------------------- garbage
+
+  private garbageSupported(g: GarbageBlock): boolean {
+    if (g.y === 0) return true;
+    for (let c = g.x; c < g.x + g.width; c++) {
+      if (!isEmptyCell(this.cells[g.y - 1][c])) return true;
+    }
+    return false;
+  }
+
+  private moveGarbageDown(g: GarbageBlock): void {
+    for (let c = g.x; c < g.x + g.width; c++) {
+      for (let r = g.y; r < g.y + g.height; r++) {
+        this.cells[r - 1][c] = this.cells[r][c];
+      }
+      this.cells[g.y + g.height - 1][c] = emptyCell();
+    }
+    g.y--;
+  }
+
+  private applyGarbageGravity(): void {
+    const blocks = [...this.garbage.values()].sort((a, b) => a.y - b.y);
+    for (const g of blocks) {
+      if (g.state === "transforming") continue;
+      if (g.state === "idle") {
+        if (!this.garbageSupported(g)) {
+          g.state = "hover";
+          g.timer = TIMING.hoverGarbage;
+        }
+        continue;
+      }
+      if (g.state === "hover") {
+        if (this.garbageSupported(g)) {
+          g.state = "idle";
+        } else if (--g.timer <= 0) {
+          g.state = "falling";
+          g.fallTimer = 0;
+        }
+        continue;
+      }
+      // falling
+      if (this.garbageSupported(g)) {
+        this.landGarbage(g);
+        continue;
+      }
+      g.fallTimer++;
+      if (g.fallTimer >= TIMING.fallPerRow) {
+        g.fallTimer = 0;
+        this.moveGarbageDown(g);
+        if (this.garbageSupported(g)) this.landGarbage(g);
+      }
+    }
+  }
+
+  private landGarbage(g: GarbageBlock): void {
+    g.state = "idle";
+    g.fallTimer = 0;
+    this.shakeTimer = Math.max(this.shakeTimer, g.height * TIMING.shakePerRow);
+    this.emit({ type: "garbageLand", height: g.height });
+  }
+
+  private updateGarbageTimers(): void {
+    for (const g of [...this.garbage.values()]) {
+      if (g.state !== "transforming") continue;
+      for (let c = g.x; c < g.x + g.width; c++) {
+        for (let r = g.y; r < g.y + g.height; r++) this.cells[r][c].revealAt--;
+      }
+      if (--g.transformEnd > 0) continue;
+      // 変身完了。最下段だけ通常パネルになり、残りはおじゃまのまま。
+      for (let c = g.x; c < g.x + g.width; c++) {
+        const cell = this.cells[g.y][c];
+        const p = panelCell(cell.revealKind);
+        p.chain = true;
+        this.cells[g.y][c] = p;
+        for (let r = g.y + 1; r < g.y + g.height; r++) {
+          const rest = this.cells[r][c];
+          rest.revealKind = EMPTY;
+          rest.revealAt = 0;
+        }
+      }
+      g.y++;
+      g.height--;
+      if (g.height <= 0) this.garbage.delete(g.id);
+      else g.state = "idle";
+    }
+  }
+
+  /** 揃ったパネルに隣接するおじゃまを変身させる。くっついた同種のおじゃまも巻き込む。 */
+  private triggerGarbageTransform(matched: { x: number; y: number }[]): void {
+    const ids = new Set<number>();
+    for (const { x, y } of matched) {
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= COLS || ny < 0 || ny >= TOTAL_ROWS) continue;
+        const id = this.cells[ny][nx].garbage;
+        if (id >= 0) ids.add(id);
+      }
+    }
+    // 接している同種ブロックへ伝播
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const id of [...ids]) {
+        const g = this.garbage.get(id);
+        if (!g) continue;
+        for (const other of this.garbage.values()) {
+          if (ids.has(other.id) || other.type !== g.type) continue;
+          if (this.blocksTouch(g, other)) {
+            ids.add(other.id);
+            grew = true;
+          }
+        }
+      }
+    }
+    for (const id of ids) {
+      const g = this.garbage.get(id);
+      if (!g || g.state !== "idle") continue;
+      g.state = "transforming";
+      let i = 0;
+      for (let r = g.y + g.height - 1; r >= g.y; r--) {
+        for (let c = g.x; c < g.x + g.width; c++) {
+          const cell = this.cells[r][c];
+          cell.revealKind = this.randomKind();
+          cell.revealAt = TIMING.transformFlash + i * TIMING.transformInterval;
+          i++;
+        }
+      }
+      g.transformEnd = TIMING.transformFlash + i * TIMING.transformInterval + TIMING.transformHover;
+      this.emit({ type: "garbageTransform", id });
+    }
+  }
+
+  private blocksTouch(a: GarbageBlock, b: GarbageBlock): boolean {
+    const xOverlap = a.x < b.x + b.width && b.x < a.x + a.width;
+    const yOverlap = a.y < b.y + b.height && b.y < a.y + a.height;
+    const xTouch = a.x + a.width === b.x || b.x + b.width === a.x;
+    const yTouch = a.y + a.height === b.y || b.y + b.height === a.y;
+    return (xOverlap && yTouch) || (yOverlap && xTouch);
+  }
+
+  /** 相手から届いたおじゃまを、消去処理が終わっているときに盤面上部へ投下する。 */
+  private dropPendingGarbage(): void {
+    if (this.pendingGarbage.length === 0) return;
+    if (this.hasMatched() || this.hasTransforming()) return;
+    let top = 0;
+    for (let r = TOTAL_ROWS - 1; r >= 0; r--) {
+      if (this.cells[r].some((c) => !isEmptyCell(c))) {
+        top = r + 1;
+        break;
+      }
+    }
+    const base = Math.max(ROWS, top);
+    const specs = [...this.pendingGarbage].sort(
+      (a, b) => a.height - b.height || a.width - b.width,
+    );
+    const remaining: GarbageSpec[] = [];
+    for (const spec of specs) {
+      const width = Math.min(COLS, spec.width);
+      let x = 0;
+      if (width < COLS) {
+        x = this.dropSide === 0 ? 0 : COLS - width;
+        this.dropSide ^= 1;
+      }
+      let y = base;
+      while (y + spec.height <= TOTAL_ROWS && this.rectOccupied(x, y, width, spec.height)) y++;
+      if (y + spec.height > TOTAL_ROWS) {
+        remaining.push(spec);
+        continue;
+      }
+      this.placeGarbage(x, y, width, spec.height, spec.type);
+    }
+    this.pendingGarbage = remaining;
+  }
+
+  private rectOccupied(x: number, y: number, w: number, h: number): boolean {
+    for (let r = y; r < y + h; r++) {
+      for (let c = x; c < x + w; c++) {
+        if (!isEmptyCell(this.cells[r][c])) return true;
+      }
+    }
+    return false;
+  }
+
+  /** おじゃまブロックを置く。テストからも呼ぶ。 */
+  placeGarbage(x: number, y: number, width: number, height: number, type: GarbageSpec["type"] = "normal"): GarbageBlock {
+    const id = this.nextGarbageId++;
+    const g: GarbageBlock = {
+      id,
+      type,
+      x,
+      y,
+      width,
+      height,
+      state: "falling",
+      timer: 0,
+      fallTimer: 0,
+      transformEnd: 0,
+    };
+    for (let r = y; r < y + height; r++) {
+      for (let c = x; c < x + width; c++) {
+        const cell = emptyCell();
+        cell.garbage = id;
+        this.cells[r][c] = cell;
+      }
+    }
+    this.garbage.set(id, g);
+    if (this.garbageSupported(g)) g.state = "idle";
+    return g;
+  }
+
+  // ---------------------------------------------------------------- matches
+
+  private findMatches(): void {
+    const matchable = (c: Cell): boolean => isPanel(c) && c.state === "idle";
+    const set = new Set<number>();
+    const key = (x: number, y: number): number => y * COLS + x;
+    for (let y = 0; y < ROWS; y++) {
+      let x = 0;
+      while (x < COLS) {
+        const cell = this.cells[y][x];
+        if (!matchable(cell)) {
+          x++;
+          continue;
+        }
+        let end = x + 1;
+        while (end < COLS && matchable(this.cells[y][end]) && this.cells[y][end].kind === cell.kind) end++;
+        if (end - x >= 3) for (let i = x; i < end; i++) set.add(key(i, y));
+        x = end;
+      }
+    }
+    for (let x = 0; x < COLS; x++) {
+      let y = 0;
+      while (y < ROWS) {
+        const cell = this.cells[y][x];
+        if (!matchable(cell)) {
+          y++;
+          continue;
+        }
+        let end = y + 1;
+        while (end < ROWS && matchable(this.cells[end][x]) && this.cells[end][x].kind === cell.kind) end++;
+        if (end - y >= 3) for (let i = y; i < end; i++) set.add(key(x, i));
+        y = end;
+      }
+    }
+    if (set.size === 0) return;
+
+    const list = [...set]
+      .map((k) => ({ x: k % COLS, y: Math.floor(k / COLS) }))
+      .sort((a, b) => b.y - a.y || a.x - b.x);
+    const n = list.length;
+    const chaining = list.some(({ x, y }) => this.cells[y][x].chain);
+    let chainNow = 1;
+    if (chaining) {
+      this.chain++;
+      chainNow = this.chain;
+      this.maxChain = Math.max(this.maxChain, chainNow);
+      this.stats.chains++;
+    }
+    if (n >= 4) this.stats.combos++;
+
+    const gained = matchScore(n, chainNow);
+    this.score = capScore(this.score + gained);
+    this.panelsCleared += n;
+
+    let stop = 0;
+    if (n >= 4) stop += TIMING.stopComboBase + (n - 4) * TIMING.stopComboPerExtra;
+    if (chainNow >= 2) stop += TIMING.stopChainBase + (chainNow - 2) * TIMING.stopChainPerExtra;
+    if (this.panic) stop *= TIMING.stopDangerMultiplier;
+    stop = Math.min(TIMING.stopMax, stop);
+    if (stop > 0) {
+      this.stopTimer = Math.max(this.stopTimer, stop);
+      this.stopRaiseFree = true;
+    }
+
+    const attack = [...garbageFromCombo(n), ...garbageFromChain(chainNow)];
+    if (attack.length > 0) {
+      this.attacksOut.push(...attack);
+      this.emit({ type: "attack", garbage: attack });
+    }
+
+    list.forEach(({ x, y }, i) => {
+      const cell = this.cells[y][x];
+      cell.state = "matched";
+      cell.chain = false;
+      cell.popAt = TIMING.flash + i * TIMING.popInterval;
+      cell.removeAt = TIMING.flash + n * TIMING.popInterval + TIMING.popTail;
+    });
+    this.emit({ type: "match", panels: n, chain: chainNow, x: list[0].x, y: list[0].y, score: gained });
+    this.triggerGarbageTransform(list);
+
+    if (this.speedUp) {
+      const lv = Math.min(99, this.startLevel + Math.floor(this.panelsCleared / PANELS_PER_LEVEL));
+      if (lv !== this.level) {
+        this.level = lv;
+        this.emit({ type: "levelUp", level: lv });
+      }
+    }
+  }
+
+  /** 着地して揃わなかったパネルの連鎖フラグを落とす。真下が入れ替え中なら判定を待つ。 */
+  private clearStaleChainFlags(): void {
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.cells[r][c];
+        if (!isPanel(cell) || !cell.chain || cell.state !== "idle") continue;
+        const below = r > 0 ? this.cells[r - 1][c] : null;
+        if (below && isPanel(below) && below.state === "swapping") continue;
+        cell.chain = false;
+      }
+    }
+  }
+
+  private updateChainEnd(): void {
+    if (this.chain <= 1) return;
+    if (this.hasMatched() || this.hasTransforming()) return;
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.cells[r][c];
+        if (isPanel(cell) && cell.chain) return;
+      }
+    }
+    this.emit({ type: "chainEnd", chain: this.chain });
+    this.chain = 1;
+  }
+
+  // ------------------------------------------------------------------- rise
+
+  private updateRise(input: Input): void {
+    if (this.stopTimer > 0) this.stopTimer--;
+    if (this.shakeTimer > 0) this.shakeTimer--;
+    const busy = this.hasMatched() || this.hasTransforming();
+    const touching = this.topTouching();
+    let manual = false;
+    if (input.raise && !busy && this.shakeTimer === 0 && !touching) {
+      this.riseProgress += 1 / TIMING.manualRisePerRow;
+      manual = true;
+    } else if (!this.noRise && !busy && this.shakeTimer === 0 && !touching && this.stopTimer === 0) {
+      this.riseProgress += 1 / riseFramesPerRow(this.level);
+    }
+    if (this.riseProgress >= 1) {
+      this.riseProgress -= 1;
+      this.shiftUp();
+      if (manual) {
+        this.stats.manualRows++;
+        if (this.stopTimer > 0 && this.stopRaiseFree) this.stopRaiseFree = false;
+        else this.score = capScore(this.score + 1);
+      }
+    }
+  }
+
+  private shiftUp(): void {
+    for (let r = TOTAL_ROWS - 1; r >= 1; r--) this.cells[r] = this.cells[r - 1];
+    this.cells[0] = this.nextRow.map((k) => panelCell(k));
+    for (const g of this.garbage.values()) g.y++;
+    this.cursor.y = Math.min(ROWS - 1, this.cursor.y + 1);
+    this.nextRow = this.generateRow();
+  }
+
+  // ----------------------------------------------------------------- status
+
+  private updateStatus(): void {
+    const touching = this.topTouching();
+    const busy = this.hasMatched() || this.hasTransforming();
+    if (touching && !busy) {
+      this.deathTimer++;
+      if (this.deathTimer > TIMING.deathGrace) {
+        this.gameOver = true;
+        this.emit({ type: "gameOver" });
+      }
+    } else if (!touching) {
+      this.deathTimer = 0;
+    }
+    if (touching !== this.panic) {
+      this.panic = touching;
+      this.emit({ type: "panic", on: touching });
+    }
+    let danger = false;
+    for (let r = DANGER_ROW; r < ROWS && !danger; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (!isEmptyCell(this.cells[r][c])) {
+          danger = true;
+          break;
+        }
+      }
+    }
+    if (danger !== this.danger) {
+      this.danger = danger;
+      this.emit({ type: "danger", on: danger });
+    }
+  }
+}
