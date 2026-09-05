@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BGM 候補（SFC風）</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px; background: #12141c; color: #e6e6ea; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p.note { color: #9aa0b4; font-size: 13px; margin: 0 0 16px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 12px 16px; background: #1b1e2a; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+  .controls label { display: flex; align-items: center; gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .card { background: #1b1e2a; border: 2px solid #2a2e40; border-radius: 10px; padding: 14px 16px; }
+  .card.playing { border-color: #ffd34d; box-shadow: 0 0 0 2px #ffd34d44; }
+  .card h2 { font-size: 16px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  .card h2 .key { color: #9aa0b4; font-size: 12px; font-weight: normal; }
+  .card .desc { font-size: 13px; color: #c3c7d6; margin: 0 0 6px; line-height: 1.6; }
+  .card .spec { font-size: 12px; color: #8b91a8; margin: 0 0 10px; line-height: 1.6; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #3a3f58; background: #2a2e40; color: #fff; cursor: pointer; }
+  button:hover { background: #363b54; }
+  button.primary { background: #ffd34d; color: #1a1a1a; border-color: #ffd34d; font-weight: bold; }
+  #warn { color: #ff8a8a; white-space: pre-wrap; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>BGM 候補（SFC風・Web Audio 合成）</h1>
+<p class="note">音声ファイルは使わず、ゲーム本体と同じく Web Audio のオシレータだけで鳴らしています。気に入った案の番号を教えてください。数字キーで再生、Esc または Space で停止。</p>
+<div class="controls">
+  <label>音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.6"></label>
+  <label><input id="danger" type="checkbox"> ピンチ（テンポ ×1.3）</label>
+  <label><input id="echo" type="checkbox" checked> エコー（SFC 風の残響）</label>
+  <button id="stopAll">停止</button>
+  <span id="status" style="color:#9aa0b4"></span>
+</div>
+<div id="warn"></div>
+<div id="list" class="grid"></div>
+
+<script>
+'use strict';
+
+// ============================================================ 音符・パターン
+const NOTE_IDX = { c:0,'c#':1,db:1,d:2,'d#':3,eb:3,e:4,f:5,'f#':6,gb:6,g:7,'g#':8,ab:8,a:9,'a#':10,bb:10,b:11 };
+function noteFreq(name) {
+  const m = /^([a-g])([#b]?)(-?\d)$/.exec(name);
+  if (!m) throw new Error('音名が不正: ' + name);
+  const midi = (Number(m[3]) + 1) * 12 + NOTE_IDX[m[1] + m[2]];
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+// "c4:2 e4+g4:4 r:2" → 16分音符単位のイベント列。len 省略時は 1（16分）。r は休符。
+function parseSeq(seq) {
+  const events = new Map();
+  let step = 0;
+  for (const tok of seq.trim().split(/\s+/)) {
+    if (!tok) continue;
+    const [body, lenStr] = tok.split(':');
+    const len = lenStr === undefined ? 1 : Number(lenStr);
+    if (!(len > 0)) throw new Error('長さが不正: ' + tok);
+    if (body !== 'r') events.set(step, { freqs: body.split('+').map(noteFreq), len });
+    step += len;
+  }
+  return { events, total: step };
+}
+
+// "x...x..." → ドラム。x=ヒット、o=オープン(ハイハット)、. = 休み。空白は無視。
+function parseDrum(pat, kind) {
+  const s = pat.replace(/\s+/g, '');
+  const events = new Map();
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === 'x' || s[i] === 'o') events.set(i, { drum: kind, open: s[i] === 'o', len: 1 });
+  }
+  return { events, total: s.length };
+}
+
+const rep = (s, n) => Array(n).fill(s).join(' ');
+// コード列をアルペジオに展開。pattern はコード構成音のインデックス列。
+function arpSeq(chords, pattern, perChord, len = 1) {
+  const out = [];
+  for (const c of chords) {
+    for (let i = 0; i < perChord; i++) {
+      const n = c[pattern[i % pattern.length] % c.length];
+      out.push(len === 1 ? n : `${n}:${len}`);
+    }
+  }
+  return out.join(' ');
+}
+const chordTok = (notes) => notes.join('+');
+
+// ============================================================ 楽器
+// a/d/s/r: ADSR(秒, s は比率)。cutoff: ローパス。fenv: 発音時にカットオフを何倍から下げるか。
+// vib: ビブラート(cents)。gate: 音符長のうち鳴らす割合。echo: エコー送り量。
+const INST = {
+  bassTri:   { wave:'triangle', wave2:'square', mix2:0.18, gain:0.45, a:0.004, d:0.12, s:0.75, r:0.06, cutoff:900, fenv:2, gate:0.85, echo:0 },
+  bassSaw:   { wave:'sawtooth', wave2:'square', mix2:0.3, gain:0.28, a:0.003, d:0.1, s:0.6, r:0.05, cutoff:700, fenv:3, gate:0.7, echo:0 },
+  bassSoft:  { wave:'triangle', gain:0.45, a:0.01, d:0.2, s:0.8, r:0.15, cutoff:600, gate:0.95, echo:0.1 },
+  bassFunk:  { wave:'triangle', wave2:'sawtooth', mix2:0.25, gain:0.4, a:0.003, d:0.09, s:0.5, r:0.05, cutoff:1100, fenv:3, gate:0.8, echo:0 },
+  arpPulse:  { wave:'pulse25', gain:0.11, a:0.002, d:0.09, s:0.35, r:0.04, cutoff:4500, fenv:1.5, gate:0.7, echo:0.35 },
+  arpThin:   { wave:'pulse12', gain:0.11, a:0.002, d:0.06, s:0.3, r:0.03, cutoff:6000, gate:0.6, echo:0.4 },
+  leadSq:    { wave:'square', gain:0.15, a:0.01, d:0.12, s:0.75, r:0.08, cutoff:3800, vib:{ rate:5.5, depth:10, delay:0.12 }, gate:0.9, echo:0.3 },
+  leadPulse: { wave:'pulse25', wave2:'pulse25', detune2:7, mix2:0.6, gain:0.13, a:0.01, d:0.1, s:0.8, r:0.08, cutoff:4200, vib:{ rate:6, depth:12, delay:0.1 }, gate:0.9, echo:0.3 },
+  flute:     { wave:'sine', wave2:'triangle', mix2:0.6, gain:0.28, a:0.04, d:0.15, s:0.85, r:0.15, cutoff:5000, vib:{ rate:5, depth:14, delay:0.2 }, gate:0.95, echo:0.45 },
+  harp:      { wave:'triangle', wave2:'sine', mix2:0.5, gain:0.2, a:0.002, d:0.3, s:0, r:0.15, cutoff:6000, gate:1, echo:0.4 },
+  clav:      { wave:'pulse25', gain:0.16, a:0.002, d:0.08, s:0.25, r:0.04, cutoff:3500, fenv:2, gate:0.6, echo:0.25 },
+  stab:      { wave:'pulse25', wave2:'sawtooth', mix2:0.3, gain:0.08, a:0.003, d:0.1, s:0.3, r:0.05, cutoff:2800, gate:0.6, echo:0.3 },
+  pad:       { wave:'pulse25', wave2:'sawtooth', mix2:0.5, detune2:9, gain:0.055, a:0.5, d:0.4, s:0.85, r:0.6, cutoff:1600, gate:0.98, echo:0.5 },
+  sineLead:  { wave:'sine', wave2:'triangle', mix2:0.35, gain:0.3, a:0.03, d:0.2, s:0.8, r:0.3, cutoff:4000, vib:{ rate:4.5, depth:12, delay:0.25 }, gate:0.95, echo:0.55 },
+  // 現行の再現用（指数減衰のみ）
+  bassPlain: { wave:'triangle', gain:0.35, decayToEnd:true, cutoff:20000, gate:0.9, echo:0 },
+  leadPlain: { wave:'square', gain:0.1, decayToEnd:true, cutoff:20000, gate:0.6, echo:0 },
+};
+
+// ============================================================ 曲
+const SONGS = [];
+
+// ---- 1. ポップ・フェアリー
+{
+  const C = { C:['c4','e4','g4','c5'], G:['g3','b3','d4','g4'], Am:['a3','c4','e4','a4'], F:['f3','a3','c4','f4'] };
+  const B = { C:['c2','c3','g2'], G:['g2','g3','d3'], Am:['a2','a3','e3'], F:['f2','f3','c3'] };
+  const prog = ['C','G','Am','F','C','G','F','G'];
+  const bounce = ([lo, hi, fi]) => `${lo}:2 r:2 ${lo}:2 ${hi}:2 ${lo}:2 r:2 ${fi}:2 ${hi}:2`;
+  SONGS.push({
+    name: '1. ポップ・フェアリー', key: 'C major / 132 BPM',
+    desc: '明るく跳ねる王道パズルゲーム風。原作の妖精っぽさ寄り。',
+    spec: 'ベース: 三角波の跳ねるライン / アルペジオ: 25%パルス / メロディ: 矩形波+ビブラート',
+    tempo: 132, beat: 16, swing: 0, echoSteps: 3,
+    tracks: [
+      { inst:'bassTri', seq: prog.map((k) => bounce(B[k])).join(' ') },
+      { inst:'arpPulse', seq: arpSeq(prog.map((k) => C[k]), [0,1,2,3,2,1], 16) },
+      { inst:'leadSq', seq: [
+        'e5:2 g5:2 e5:2 c5:2 d5:4 e5:4',
+        'd5:2 g5:2 d5:2 b4:2 c5:4 d5:4',
+        'e5:2 a5:2 e5:2 c5:2 b4:2 c5:2 d5:4',
+        'c5:4 a4:2 f4:2 g4:8',
+        'e5:2 g5:2 e5:2 c5:2 d5:4 e5:4',
+        'd5:2 g5:2 b5:2 g5:2 d5:2 b4:2 d5:4',
+        'f5:4 e5:2 d5:2 c5:2 d5:2 e5:4',
+        'g5:4 f5:2 d5:2 b4:4 d5:4',
+      ].join(' ') },
+      { drum:'kick',  pat:'x.....x.x.....x.' },
+      { drum:'snare', pat:'....x.......x...' },
+      { drum:'hat',   pat:'x.x.x.x.x.x.x.xo' },
+    ],
+  });
+}
+
+// ---- 2. スピード・テクノ
+{
+  const C = { Am:['a3','c4','e4','a4'], F:['f3','a3','c4','f4'], C:['c4','e4','g4','c5'], G:['g3','b3','d4','g4'], E:['e4','g#4','b4','e5'] };
+  const R = { Am:'a', F:'f', C:'c', G:'g', E:'e' };
+  const prog = ['Am','F','C','G','Am','F','G','E'];
+  const octBass = (r) => rep(`${r}2 ${r}2 ${r}3 ${r}2 ${r}2 ${r}3 ${r}2 ${r}3`, 2);
+  SONGS.push({
+    name: '2. スピード・テクノ', key: 'A minor / 150 BPM',
+    desc: '16分刻みのオクターブベースで疾走感。緊張感が欲しい対戦向き。',
+    spec: 'ベース: ノコギリ波 16分オクターブ / アルペジオ: 12.5%パルス / メロディ: 2オシレータのデチューンパルス',
+    tempo: 150, beat: 16, swing: 0, echoSteps: 3,
+    tracks: [
+      { inst:'bassSaw', seq: prog.map((k) => octBass(R[k])).join(' ') },
+      { inst:'arpThin', seq: arpSeq(prog.map((k) => C[k]), [0,1,2,3], 16) },
+      { inst:'leadPulse', seq: [
+        'a4:2 c5:2 e5:2 a5:4 g5:2 e5:4',
+        'f5:2 e5:2 c5:2 a4:4 c5:2 d5:4',
+        'e5:2 g5:2 c6:4 b5:2 g5:2 e5:4',
+        'd5:2 g5:2 b5:2 d6:4 b5:2 g5:4',
+        'a5:4 e5:2 c5:2 a4:2 c5:2 e5:4',
+        'f5:4 a5:2 c6:2 a5:2 f5:2 e5:4',
+        'd5:2 e5:2 g5:2 b5:2 d6:2 b5:2 g5:4',
+        'g#5:4 e5:2 b4:2 g#4:2 b4:2 e5:4',
+      ].join(' ') },
+      { drum:'kick',  pat:'x...x...x...x...' },
+      { drum:'snare', pat:'....x.......x...' },
+      { drum:'hat',   pat:'x.o.x.o.x.o.x.o.' },
+    ],
+  });
+}
+
+// ---- 3. フェアリー・ワルツ（3拍子）
+{
+  const S = { C:['c4','e4','g4'], Em:['b3','e4','g4'], F:['a3','c4','f4'], G:['b3','d4','g4'], Am:['a3','c4','e4'] };
+  const H = { C:['c4','e4','g4','c5','e5','g5'], Em:['e4','g4','b4','e5','g5','b5'], F:['f4','a4','c5','f5','a5','c6'], G:['g3','b3','d4','g4','b4','d5'], Am:['a3','c4','e4','a4','c5','e5'] };
+  const R = { C:'c2', Em:'e2', F:'f2', G:'g2', Am:'a2' };
+  const prog = ['C','Em','F','G','Am','Em','F','G'];
+  SONGS.push({
+    name: '3. フェアリー・ワルツ', key: 'C major / 3拍子 168 BPM',
+    desc: '3拍子でメルヘン。ハープの分散和音とフルート風の旋律。落ち着いて長時間遊べる方向。',
+    spec: 'ベース: 三角波 1拍目のみ / 2・3拍目にコードの刻み / ハープ: 三角波+正弦波 / 旋律: 正弦波+三角波にビブラート',
+    tempo: 168, beat: 12, swing: 0, echoSteps: 4, drumGain: 0.5,
+    tracks: [
+      { inst:'bassSoft', seq: prog.map((k) => `${R[k]}:4 r:8`).join(' ') },
+      { inst:'stab', seq: prog.map((k) => `r:4 ${chordTok(S[k])}:3 r:1 ${chordTok(S[k])}:3 r:1`).join(' ') },
+      { inst:'harp', seq: arpSeq(prog.map((k) => H[k]), [0,1,2,3,4,5,4,3,2,1,0,1], 12) },
+      { inst:'flute', seq: [
+        'g5:6 e5:2 c5:4',
+        'd5:8 e5:4',
+        'f5:4 a5:4 c6:4',
+        'b5:8 g5:4',
+        'a5:4 c6:4 e6:4',
+        'b5:6 g5:2 e5:4',
+        'f5:4 g5:4 a5:4',
+        'd6:8 b5:4',
+      ].join(' ') },
+      { drum:'kick', pat:'x...........' },
+      { drum:'rim',  pat:'....x...x...' },
+    ],
+  });
+}
+
+// ---- 4. ファンク
+{
+  const S = { Em7:['e4','g4','b4','d5'], A7:['c#4','e4','g4','a4'], C7:['c4','e4','g4','bb4'], B7:['b3','d#4','f#4','a4'] };
+  const bass = {
+    Em7: 'e2:2 r:2 e2:1 e3:1 r:2 g2:2 a2:2 r:1 b2:1 e3:2',
+    A7:  'a2:2 r:2 a2:1 a3:1 r:2 c#3:2 d3:2 r:1 e3:1 a3:2',
+    C7:  'c3:2 r:2 c3:1 c4:1 r:2 e3:2 f3:2 r:1 g3:1 c3:2',
+    B7:  'b2:2 r:2 b2:1 b3:1 r:2 d#3:2 e3:2 r:1 f#3:1 b2:2',
+  };
+  const prog = ['Em7','Em7','A7','A7','Em7','Em7','C7','B7'];
+  const stab = (k) => { const X = chordTok(S[k]); return `r:2 ${X}:1 r:3 ${X}:2 r:4 ${X}:1 r:3`; };
+  const b1 = 'r:2 b4:1 d5:1 e5:2 r:2 g5:2 e5:2 d5:2 b4:2';
+  SONGS.push({
+    name: '4. ファンク', key: 'E minor / 112 BPM スウィング',
+    desc: 'シンコペーションのベースとカッティング風の刻み。跳ねたリズムでノリ重視。',
+    spec: 'ベース: 三角波+ノコギリ波 / 刻み: 25%パルスのコードスタブ / 旋律: クラビ風の短い減衰パルス / 16分をスウィング',
+    tempo: 112, beat: 16, swing: 0.7, echoSteps: 2,
+    tracks: [
+      { inst:'bassFunk', seq: prog.map((k) => bass[k]).join(' ') },
+      { inst:'stab', seq: prog.map(stab).join(' ') },
+      { inst:'clav', seq: [
+        b1,
+        'r:4 d5:2 e5:2 g5:1 a5:1 g5:2 e5:4',
+        'r:2 c#5:1 e5:1 a5:2 r:2 g5:2 e5:2 c#5:2 a4:2',
+        'r:4 g5:2 a5:2 c6:1 a5:1 g5:2 e5:4',
+        b1,
+        'r:4 d5:2 e5:2 g5:1 a5:1 b5:2 d6:4',
+        'e5:2 g5:2 bb5:2 c6:2 r:2 bb5:2 g5:2 e5:2',
+        'd#5:2 f#5:2 a5:2 b5:2 r:2 a5:2 f#5:2 d#5:2',
+      ].join(' ') },
+      { drum:'kick',  pat:'x..x..x...x.x...' },
+      { drum:'snare', pat:'....x.......x..x' },
+      { drum:'hat',   pat:'x.x.x.xox.x.x.xo' },
+    ],
+  });
+}
+
+// ---- 5. チル・幻想
+{
+  const P = { D:['d4','f#4','a4','c#5'], Bm:['b3','d4','f#4','a4'], G:['g3','b3','d4','f#4'], A:['a3','c#4','e4','g4'] };
+  const prog = ['D','Bm','G','A'];
+  const bass = {
+    D:  'd2:6 r:2 d2:4 r:4 a2:6 r:2 d2:8',
+    Bm: 'b1:6 r:2 b1:4 r:4 f#2:6 r:2 b1:8',
+    G:  'g2:6 r:2 g2:4 r:4 d3:6 r:2 g2:8',
+    A:  'a2:6 r:2 a2:4 r:4 e3:6 r:2 a2:8',
+  };
+  SONGS.push({
+    name: '5. チル・幻想', key: 'D major / 96 BPM',
+    desc: 'メジャーセブンスのパッドとエコー多めのリード。ゆったりした幻想系。',
+    spec: 'パッド: パルス+ノコギリ波のデチューン、遅いアタック / ベース: 三角波 / 旋律: 正弦波 / エコー深め',
+    tempo: 96, beat: 16, swing: 0, echoSteps: 3, echoFeedback: 0.45, drumGain: 0.6,
+    tracks: [
+      { inst:'pad', seq: prog.map((k) => `${chordTok(P[k])}:32`).join(' ') },
+      { inst:'bassSoft', seq: prog.map((k) => bass[k]).join(' ') },
+      { inst:'arpPulse', seq: arpSeq(prog.map((k) => P[k]), [0,1,2,3,2,1], 16, 2) },
+      { inst:'sineLead', seq: [
+        'r:4 f#5:4 a5:4 c#6:8 b5:4 a5:8',
+        'r:4 d6:4 c#6:4 b5:8 f#5:4 a5:8',
+        'r:4 b5:4 a5:4 g5:8 f#5:4 e5:8',
+        'r:4 a5:4 g5:4 e5:8 c#5:4 e5:8',
+      ].join(' ') },
+      { drum:'kick',  pat:'x.......x.x.....' },
+      { drum:'snare', pat:'....x.......x...' },
+      { drum:'hat',   pat:'..x...x...x...x.' },
+    ],
+  });
+}
+
+// ---- 6. 現行（比較用）
+SONGS.push({
+  name: '6. 現行（比較用）', key: 'A / 126 BPM',
+  desc: '今ゲームに入っているものの再現。2音+ノイズ。',
+  spec: 'ベース: 三角波 8分 / 旋律: 矩形波を4分ごとに短く / ノイズ: 1拍おき',
+  tempo: 126, beat: 16, swing: 0, echoSteps: 3, echoAmount: 0,
+  tracks: [
+    { inst:'bassPlain', seq: 'a2:2 a2:2 e3:2 e3:2 d3:2 d3:2 c3:2 c3:2 a2:2 a2:2 e3:2 e3:2 f3:2 f3:2 g3:2 g3:2' },
+    { inst:'leadPlain', seq: 'a4:2 r:2 c#5:2 r:2 c#5:2 r:2 a4:2 r:2 a4:2 r:2 c#5:2 r:2 f5:2 r:2 c#5:2 r:2' },
+    { drum:'hat', pat:'x.......x.......x.......x.......' },
+  ],
+});
+
+// ============================================================ 検証
+function buildSong(song) {
+  const tracks = song.tracks.map((t) => {
+    if (t.drum) return { ...parseDrum(t.pat, t.drum), drum: t.drum };
+    if (!INST[t.inst]) throw new Error('楽器がない: ' + t.inst);
+    return { ...parseSeq(t.seq), inst: INST[t.inst], name: t.inst };
+  });
+  const warnings = [];
+  for (const tr of tracks) {
+    if (tr.total % song.beat !== 0) warnings.push(`${song.name} / ${tr.name || tr.drum}: 長さ ${tr.total} が小節(${song.beat})の倍数でない`);
+  }
+  return { tracks, warnings };
+}
+const ALL_WARNINGS = [];
+for (const s of SONGS) ALL_WARNINGS.push(...buildSong(s).warnings);
+if (typeof document === 'undefined') {
+  console.log(ALL_WARNINGS.length ? ALL_WARNINGS.join('\n') : 'OK: すべての曲の小節長が揃っています');
+  for (const s of SONGS) console.log(s.name, buildSong(s).tracks.map((t) => `${t.name || t.drum}=${t.total}`).join(' '));
+}
+
+// ============================================================ 音声エンジン
+class Engine {
+  constructor() { this.ctx = null; this.cur = null; this.danger = false; this.echoOn = true; this.volume = 0.6; }
+
+  init() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const ctx = new AudioContext();
+    this.ctx = ctx;
+    this.master = ctx.createGain();
+    this.master.gain.value = this.volume;
+    // SFC の音の丸さを出すために高域を削り、軽く圧縮する
+    this.tone = ctx.createBiquadFilter();
+    this.tone.type = 'lowpass'; this.tone.frequency.value = 9000; this.tone.Q.value = 0.5;
+    this.comp = ctx.createDynamicsCompressor();
+    this.comp.threshold.value = -18; this.comp.knee.value = 12; this.comp.ratio.value = 3;
+    this.comp.attack.value = 0.005; this.comp.release.value = 0.15;
+    this.master.connect(this.tone); this.tone.connect(this.comp); this.comp.connect(ctx.destination);
+
+    // エコー（SPC700 風のフィードバックディレイ）
+    this.echoIn = ctx.createGain();
+    this.delay = ctx.createDelay(2);
+    this.delay.delayTime.value = 0.3;
+    this.fb = ctx.createGain(); this.fb.gain.value = 0.35;
+    this.fbFilter = ctx.createBiquadFilter(); this.fbFilter.type = 'lowpass'; this.fbFilter.frequency.value = 3000;
+    this.echoOut = ctx.createGain(); this.echoOut.gain.value = this.echoOn ? 1 : 0;
+    this.echoIn.connect(this.delay);
+    this.delay.connect(this.fbFilter); this.fbFilter.connect(this.fb); this.fb.connect(this.delay);
+    this.delay.connect(this.echoOut); this.echoOut.connect(this.master);
+
+    this.waves = { pulse25: this.makePulse(0.25), pulse12: this.makePulse(0.125) };
+    const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = nb.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    this.noiseBuf = nb;
+  }
+
+  makePulse(duty) {
+    const n = 48, real = new Float32Array(n), imag = new Float32Array(n);
+    for (let k = 1; k < n; k++) real[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty);
+    return this.ctx.createPeriodicWave(real, imag);
+  }
+
+  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
+  setEcho(on) { this.echoOn = on; if (this.echoOut) this.echoOut.gain.value = on ? 1 : 0; }
+  setDanger(on) { this.danger = on; }
+
+  tempo() { return this.cur ? this.cur.song.tempo * (this.danger ? 1.3 : 1) : 120; }
+
+  makeOsc(wave, freq, t0) {
+    const osc = this.ctx.createOscillator();
+    if (this.waves[wave]) osc.setPeriodicWave(this.waves[wave]); else osc.type = wave;
+    osc.frequency.setValueAtTime(freq, t0);
+    return osc;
+  }
+
+  playNote(inst, freq, t0, dur) {
+    const ctx = this.ctx;
+    const env = ctx.createGain();
+    const peak = inst.gain;
+    let tEnd;
+    if (inst.decayToEnd) {
+      env.gain.setValueAtTime(peak, t0);
+      env.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      tEnd = t0 + dur;
+    } else {
+      env.gain.setValueAtTime(0, t0);
+      env.gain.linearRampToValueAtTime(peak, t0 + inst.a);
+      const tDec = t0 + inst.a + inst.d;
+      env.gain.linearRampToValueAtTime(peak * inst.s, tDec);
+      const tRel = Math.max(t0 + dur, tDec);
+      env.gain.setValueAtTime(peak * inst.s, tRel);
+      env.gain.linearRampToValueAtTime(0, tRel + inst.r);
+      tEnd = tRel + inst.r;
+    }
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.Q.value = 0.8;
+    if (inst.fenv) {
+      filter.frequency.setValueAtTime(Math.min(18000, inst.cutoff * inst.fenv), t0);
+      filter.frequency.exponentialRampToValueAtTime(inst.cutoff, t0 + (inst.d || 0.1));
+    } else {
+      filter.frequency.value = inst.cutoff;
+    }
+    const oscs = [this.makeOsc(inst.wave, freq, t0)];
+    const mix1 = ctx.createGain(); mix1.gain.value = inst.wave2 ? 1 - inst.mix2 * 0.5 : 1;
+    oscs[0].connect(mix1); mix1.connect(filter);
+    if (inst.wave2) {
+      const o2 = this.makeOsc(inst.wave2, freq, t0);
+      if (inst.detune2) o2.detune.value = inst.detune2;
+      const mix2 = ctx.createGain(); mix2.gain.value = inst.mix2;
+      o2.connect(mix2); mix2.connect(filter);
+      oscs.push(o2);
+    }
+    if (inst.vib) {
+      const lfo = ctx.createOscillator(); lfo.frequency.value = inst.vib.rate;
+      const lg = ctx.createGain();
+      lg.gain.setValueAtTime(0, t0);
+      lg.gain.linearRampToValueAtTime(inst.vib.depth, t0 + inst.vib.delay + 0.15);
+      lfo.connect(lg);
+      for (const o of oscs) lg.connect(o.detune);
+      lfo.start(t0); lfo.stop(tEnd + 0.05);
+    }
+    filter.connect(env);
+    env.connect(this.master);
+    if (inst.echo) { const s = ctx.createGain(); s.gain.value = inst.echo; env.connect(s); s.connect(this.echoIn); }
+    for (const o of oscs) { o.start(t0); o.stop(tEnd + 0.05); }
+  }
+
+  noiseVoice(t0, dur, filterType, freq, gain, echo = 0) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource(); src.buffer = this.noiseBuf;
+    src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = freq; f.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    if (echo) { const s = ctx.createGain(); s.gain.value = echo; g.connect(s); s.connect(this.echoIn); }
+    src.start(t0); src.stop(t0 + dur + 0.02);
+  }
+
+  toneVoice(t0, dur, type, f0, f1, gain, echo = 0) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(f0, t0);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t0 + dur * 0.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g); g.connect(this.master);
+    if (echo) { const s = ctx.createGain(); s.gain.value = echo; g.connect(s); s.connect(this.echoIn); }
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+
+  playDrum(kind, open, t0, level) {
+    switch (kind) {
+      case 'kick':
+        this.toneVoice(t0, 0.28, 'sine', 160, 45, 0.9 * level);
+        this.noiseVoice(t0, 0.015, 'lowpass', 2500, 0.3 * level);
+        break;
+      case 'snare':
+        this.noiseVoice(t0, 0.16, 'bandpass', 1800, 0.45 * level, 0.3);
+        this.toneVoice(t0, 0.08, 'triangle', 190, 0, 0.3 * level);
+        break;
+      case 'hat':
+        this.noiseVoice(t0, open ? 0.3 : 0.045, 'highpass', 7500, 0.22 * level, open ? 0.2 : 0);
+        break;
+      case 'rim':
+        this.toneVoice(t0, 0.04, 'triangle', 900, 0, 0.25 * level, 0.3);
+        this.noiseVoice(t0, 0.03, 'bandpass', 3000, 0.15 * level);
+        break;
+    }
+  }
+
+  play(song) {
+    this.init();
+    this.stop();
+    const { tracks } = buildSong(song);
+    this.fb.gain.value = song.echoFeedback ?? 0.35;
+    this.cur = { song, tracks, step: 0, nextTime: this.ctx.currentTime + 0.08, timer: null, echoAmount: song.echoAmount ?? 1 };
+    this.tick();
+  }
+
+  tick() {
+    const cur = this.cur;
+    if (!cur) return;
+    const ctx = this.ctx;
+    const stepDur = 60 / this.tempo() / 4;
+    this.delay.delayTime.setTargetAtTime(stepDur * cur.song.echoSteps, ctx.currentTime, 0.05);
+    const drumGain = cur.song.drumGain ?? 1;
+    while (cur.nextTime < ctx.currentTime + 0.12) {
+      const s = cur.step;
+      const swingOfs = s % 2 === 1 ? cur.song.swing * stepDur / 3 : 0;
+      const t = cur.nextTime + swingOfs;
+      for (const tr of cur.tracks) {
+        const ev = tr.events.get(s % tr.total);
+        if (!ev) continue;
+        if (ev.drum) { this.playDrum(ev.drum, ev.open, t, drumGain); continue; }
+        const inst = cur.echoAmount === 0 ? { ...tr.inst, echo: 0 } : tr.inst;
+        const dur = ev.len * stepDur * inst.gate;
+        for (const f of ev.freqs) this.playNote(inst, f, t, dur);
+      }
+      cur.nextTime += stepDur;
+      cur.step++;
+    }
+    cur.timer = setTimeout(() => this.tick(), 30);
+  }
+
+  stop() {
+    if (!this.cur) return;
+    clearTimeout(this.cur.timer);
+    this.cur = null;
+  }
+}
+
+// ============================================================ UI
+if (typeof document !== 'undefined') {
+  const engine = new Engine();
+  const list = document.getElementById('list');
+  const status = document.getElementById('status');
+  document.getElementById('warn').textContent = ALL_WARNINGS.join('\n');
+  const cards = [];
+
+  const refresh = () => {
+    cards.forEach((c, i) => {
+      const playing = engine.cur && engine.cur.song === SONGS[i];
+      c.card.classList.toggle('playing', !!playing);
+      c.btn.textContent = playing ? '停止' : '再生';
+      c.btn.classList.toggle('primary', !playing);
+    });
+    status.textContent = engine.cur ? `再生中: ${engine.cur.song.name}` : '';
+  };
+  const toggle = (i) => {
+    const s = SONGS[i];
+    if (engine.cur && engine.cur.song === s) engine.stop(); else engine.play(s);
+    refresh();
+  };
+
+  SONGS.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<h2><span>${s.name}</span><span class="key">${s.key}</span></h2><p class="desc">${s.desc}</p><p class="spec">${s.spec}</p>`;
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = '再生';
+    btn.addEventListener('click', () => toggle(i));
+    card.appendChild(btn);
+    list.appendChild(card);
+    cards.push({ card, btn });
+  });
+
+  document.getElementById('vol').addEventListener('input', (e) => engine.setVolume(Number(e.target.value)));
+  document.getElementById('danger').addEventListener('change', (e) => engine.setDanger(e.target.checked));
+  document.getElementById('echo').addEventListener('change', (e) => engine.setEcho(e.target.checked));
+  document.getElementById('stopAll').addEventListener('click', () => { engine.stop(); refresh(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'Escape' || e.key === ' ') { e.preventDefault(); engine.stop(); refresh(); return; }
+    const n = Number(e.key);
+    if (n >= 1 && n <= SONGS.length) toggle(n - 1);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
-import { Game, type GameMode, type Input, NO_INPUT } from "../core";
+import { Game, type CpuLevel, type GameMode, type Input, NO_INPUT } from "../core";
+import { recordCpuResult, recordEndless } from "./highscore";
 import { BoardView } from "./BoardView";
 import { P1_KEYS, P2_KEYS, PlayerInput } from "./input";
 import { audio } from "./shared";
@@ -17,6 +18,7 @@ export class GameScene extends Phaser.Scene {
   private accumulator = 0;
   private paused = false;
   private mode: GameMode = "endless";
+  private cpuLevel: CpuLevel = "normal";
   private pauseText!: Phaser.GameObjects.Text;
   private ended = false;
   private wasDanger = false;
@@ -25,12 +27,13 @@ export class GameScene extends Phaser.Scene {
     super("game");
   }
 
-  create(data: { mode: GameMode }): void {
+  create(data: { mode: GameMode; cpuLevel?: CpuLevel }): void {
     this.mode = data.mode ?? "endless";
+    this.cpuLevel = data.cpuLevel ?? "normal";
     const params = new URLSearchParams(location.search);
     const seed = Number(params.get("seed")) || (Date.now() & 0xffffff);
     const speedLevel = Number(params.get("speed")) || 1;
-    this.game_ = new Game({ mode: this.mode, seed, speedLevel });
+    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel });
     this.accumulator = 0;
     this.paused = false;
     this.ended = false;
@@ -58,17 +61,19 @@ export class GameScene extends Phaser.Scene {
       const ox1 = Math.floor(W / 2 - gap / 2 - BOARD_W);
       const ox2 = Math.floor(W / 2 + gap / 2);
       origins.push(ox1, ox2);
+      const isCpu = this.mode === "cpu";
       this.views.push(new BoardView(this, boards[0], ox1, top, "1P", false));
-      this.views.push(new BoardView(this, boards[1], ox2, top, "2P", false));
+      this.views.push(new BoardView(this, boards[1], ox2, top, isCpu ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P", false));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
-      this.inputs.push(new PlayerInput(this, P2_KEYS, 1));
+      if (!isCpu) this.inputs.push(new PlayerInput(this, P2_KEYS, 1));
       this.add
         .text(W / 2, top + BOARD_H / 2, "VS", { fontFamily: FONT, fontSize: layout.portrait ? "18px" : "28px", color: "#9a9ab0" })
         .setOrigin(0.5);
     }
 
-    // タッチ・マウス操作。タップ・横ドラッグで入れ替え。どの端末でも受け付ける。
+    // タッチ・マウス操作。タップ・横ドラッグで入れ替え。どの端末でも受け付ける。CPU の盤面は触れない。
     boards.forEach((b, i) => {
+      if (!this.inputs[i]) return;
       const t = new TouchInput(this, b, origins[i], top);
       this.touches.push(t);
       this.inputs[i].touch = t;
@@ -82,7 +87,8 @@ export class GameScene extends Phaser.Scene {
           fontSize: "16px",
           color: "#3a3a4c",
         })
-        .setOrigin(0.5),
+        .setOrigin(0.5)
+        .setVisible(Boolean(this.inputs[i])),
     );
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
@@ -90,7 +96,7 @@ export class GameScene extends Phaser.Scene {
       if (p.y > H - 22) return; // 画面下端のメニュー用テキスト
       let nearest = 0;
       if (this.touches.length === 2) nearest = p.x < W / 2 ? 0 : 1;
-      this.touches[nearest].raisePointers.add(p.id);
+      this.touches[nearest]?.raisePointers.add(p.id);
     });
 
     this.pauseText = this.add
@@ -110,7 +116,7 @@ export class GameScene extends Phaser.Scene {
 
     const kb = this.input.keyboard!;
     kb.on("keydown-P", () => this.togglePause());
-    kb.on("keydown-R", () => this.scene.restart({ mode: this.mode }));
+    kb.on("keydown-R", () => this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel }));
     kb.on("keydown-ESC", () => this.toMenu());
     kb.on("keydown-M", () => audio.setMuted(!audio.muted));
     kb.on("keydown", () => audio.start());
@@ -176,22 +182,29 @@ export class GameScene extends Phaser.Scene {
     // 結果表示のあと、盤面の中をタップ（クリック）するとやり直す
     this.time.delayedCall(800, () => {
       this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-        if (this.touches.some((t) => t.cellAt(p.x, p.y))) this.scene.restart({ mode: this.mode });
+        if (this.touches.some((t) => t.cellAt(p.x, p.y))) this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
       });
     });
     const g = this.game_;
     if (this.mode === "endless") {
       const b = g.boards[0];
+      const rank = recordEndless(b.score, b.maxChain);
+      const rankLine = rank === 1 ? "NEW RECORD!" : rank > 0 ? `RANK ${rank}` : "";
       this.views[0].showOverlay(
         "GAME OVER",
-        `SCORE ${b.score}\nMAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n\nR / tap: restart   Esc: menu`,
+        `SCORE ${b.score}\nMAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n${rankLine}\n\nR / tap: restart   Esc: menu`,
       );
     } else {
+      let recordLine = "";
+      if (this.mode === "cpu" && g.winner >= 0) {
+        const r = recordCpuResult(this.cpuLevel, g.winner === 0);
+        recordLine = `\nVS ${this.cpuLevel.toUpperCase()}  ${r.wins}W ${r.losses}L`;
+      }
       g.boards.forEach((b, i) => {
         const won = g.winner === i;
         this.views[i].showOverlay(
           won ? "WIN" : "LOSE",
-          `MAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n\nR / tap: rematch   Esc: menu`,
+          `MAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}${i === 0 ? recordLine : ""}\n\nR / tap: rematch   Esc: menu`,
         );
       });
     }

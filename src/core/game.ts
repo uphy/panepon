@@ -1,14 +1,17 @@
+import { CpuPlayer, type CpuLevel } from "./ai";
 import { Board } from "./board";
 import type { BoardOptions, Input } from "./types";
 import { NO_INPUT } from "./types";
 
-export type GameMode = "endless" | "versus";
+/** endless: 1人用。versus: 2人対戦。cpu: 2P側を CpuPlayer が操作する対戦。 */
+export type GameMode = "endless" | "versus" | "cpu";
 
 export interface GameOptions {
   mode: GameMode;
   seed: number;
   kinds?: number;
   speedLevel?: number;
+  cpuLevel?: CpuLevel;
 }
 
 /**
@@ -17,6 +20,7 @@ export interface GameOptions {
 export class Game {
   readonly mode: GameMode;
   readonly boards: Board[];
+  readonly cpu: CpuPlayer | null = null;
   /** 対戦の勝者（0 or 1）。未決着は -1。 */
   winner = -1;
   finished = false;
@@ -35,13 +39,16 @@ export class Game {
         new Board({ ...common, seed: opts.seed }),
         new Board({ ...common, seed: opts.seed + 1 }),
       ];
+      if (opts.mode === "cpu") this.cpu = new CpuPlayer(this.boards[1], opts.cpuLevel ?? "normal");
     }
   }
 
   tick(inputs: Input[]): void {
     if (this.finished) return;
-    this.boards.forEach((b, i) => b.tick(inputs[i] ?? NO_INPUT));
-    if (this.mode === "versus") {
+    const resolved = this.boards.map((_, i) => inputs[i] ?? NO_INPUT);
+    if (this.cpu) resolved[1] = this.cpu.next();
+    this.boards.forEach((b, i) => b.tick(resolved[i]));
+    if (this.boards.length === 2) {
       const [a, b] = this.boards;
       if (a.attacksOut.length) b.pendingGarbage.push(...a.attacksOut);
       if (b.attacksOut.length) a.pendingGarbage.push(...b.attacksOut);

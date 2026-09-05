@@ -6,3 +6,5 @@ export * from "./rng";
 export { Board, isPanel, isEmptyCell } from "./board";
 export { Game } from "./game";
 export type { GameMode, GameOptions } from "./game";
+export { CpuPlayer, CPU_PARAMS } from "./ai";
+export type { CpuLevel } from "./ai";
