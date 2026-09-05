@@ -56,6 +56,8 @@ export interface Input {
   moveY: -1 | 0 | 1;
   swap: boolean;
   raise: boolean;
+  /** カーソルを直接この位置へ置く（タッチ操作用）。moveX/moveY より先に適用する。 */
+  cursorTo?: { x: number; y: number };
 }
 
 export const NO_INPUT: Input = { moveX: 0, moveY: 0, swap: false, raise: false };

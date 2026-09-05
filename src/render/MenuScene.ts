@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FONT, GAME_H, GAME_W, KIND_COLORS, TEXT_COLOR } from "./theme";
+import { FONT, KIND_COLORS, TEXT_COLOR, layoutFor } from "./theme";
 import { createTextures } from "./textures";
 import type { GameMode } from "../core";
 import { audio } from "./shared";
@@ -35,25 +35,32 @@ export class MenuScene extends Phaser.Scene {
       return;
     }
 
+    const layout = layoutFor("menu");
+    this.scale.resize(layout.width, layout.height);
+    const W = layout.width;
+    const H = layout.height;
+    const cx = W / 2;
+
     this.add
-      .text(GAME_W / 2, 90, "PANEPON", { fontFamily: FONT, fontSize: "64px", color: TEXT_COLOR, fontStyle: "bold" })
+      .text(cx, H * 0.17, "PANEPON", { fontFamily: FONT, fontSize: layout.portrait ? "48px" : "64px", color: TEXT_COLOR, fontStyle: "bold" })
       .setOrigin(0.5);
     this.add
-      .text(GAME_W / 2, 145, "clone  -  Panel de Pon style action puzzle", {
+      .text(cx, H * 0.17 + 55, layout.portrait ? "Panel de Pon style puzzle" : "clone  -  Panel de Pon style action puzzle", {
         fontFamily: FONT,
-        fontSize: "16px",
+        fontSize: layout.portrait ? "13px" : "16px",
         color: "#9a9ab0",
       })
       .setOrigin(0.5);
 
     KIND_COLORS.forEach((_, k) => {
-      this.add.image(GAME_W / 2 - 100 + k * 40, 200, `panel-${k}`);
+      this.add.image(cx - 100 + k * 40, H * 0.17 + 110, `panel-${k}`);
     });
 
     ITEMS.forEach((item, i) => {
       const t = this.add
-        .text(GAME_W / 2, 270 + i * 44, item.label, { fontFamily: FONT, fontSize: "26px", color: TEXT_COLOR })
+        .text(cx, H * 0.17 + 180 + i * 56, item.label, { fontFamily: FONT, fontSize: "26px", color: TEXT_COLOR })
         .setOrigin(0.5)
+        .setPadding(16, 10, 16, 10)
         .setInteractive({ useHandCursor: true });
       t.on("pointerover", () => {
         this.index = i;
@@ -66,16 +73,21 @@ export class MenuScene extends Phaser.Scene {
       this.texts.push(t);
     });
 
-    this.add
-      .text(
-        GAME_W / 2,
-        GAME_H - 80,
-        [
+    const help = layout.touch
+      ? ["Touch: drag a panel sideways to swap", "tap to move the cursor, tap the cursor to swap", "hold RAISE to push the stack up"]
+      : [
           "P1: ←↑↓→ move   Z swap   X raise        P2: WASD move   F swap   H raise",
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",
-        ].join("\n"),
-        { fontFamily: FONT, fontSize: "13px", color: "#9a9ab0", align: "center" },
-      )
+          "Mouse: drag a panel sideways to swap, click to move the cursor",
+        ];
+    this.add
+      .text(cx, H - 70, help.join("\n"), {
+        fontFamily: FONT,
+        fontSize: layout.portrait ? "12px" : "13px",
+        color: "#9a9ab0",
+        align: "center",
+        wordWrap: { width: W - 20 },
+      })
       .setOrigin(0.5);
 
     const kb = this.input.keyboard!;

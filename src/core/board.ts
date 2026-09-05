@@ -249,8 +249,10 @@ export class Board {
 
   private handleInput(input: Input): void {
     const { cursor } = this;
-    const nx = Math.max(0, Math.min(COLS - 2, cursor.x + input.moveX));
-    const ny = Math.max(0, Math.min(ROWS - 1, cursor.y + input.moveY));
+    const baseX = input.cursorTo ? input.cursorTo.x : cursor.x + input.moveX;
+    const baseY = input.cursorTo ? input.cursorTo.y : cursor.y + input.moveY;
+    const nx = Math.max(0, Math.min(COLS - 2, baseX));
+    const ny = Math.max(0, Math.min(ROWS - 1, baseY));
     if (nx !== cursor.x || ny !== cursor.y) {
       cursor.x = nx;
       cursor.y = ny;

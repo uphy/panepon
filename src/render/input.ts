@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import type { Input } from "../core";
+import type { TouchInput } from "./touch";
 
 export interface KeyMap {
   up: string;
@@ -42,6 +43,8 @@ export class PlayerInput {
   private pressed: Record<string, boolean> = {};
   private swapWasDown = false;
   padIndex: number;
+  /** タッチ操作。あればキーボード・パッドと合成する。 */
+  touch: TouchInput | null = null;
 
   constructor(
     private scene: Phaser.Scene,
@@ -114,11 +117,24 @@ export class PlayerInput {
     const swap = (swapDown && !this.swapWasDown) || this.pressed.swap === true;
     this.pressed.swap = false;
     this.swapWasDown = swapDown;
-    return {
+    const input: Input = {
       moveX: left && !right ? -1 : right && !left ? 1 : 0,
       moveY: up && !down ? 1 : down && !up ? -1 : 0,
       swap,
       raise: this.isDown("raise"),
     };
+    if (this.touch) {
+      const t = this.touch.poll();
+      input.raise = input.raise || t.raise;
+      if (t.action) {
+        input.cursorTo = t.action.cursorTo;
+        input.swap = input.swap || t.action.swap;
+        if (t.action.cursorTo) {
+          input.moveX = 0;
+          input.moveY = 0;
+        }
+      }
+    }
+    return input;
   }
 }

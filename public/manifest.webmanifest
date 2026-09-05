@@ -1,0 +1,10 @@
+{
+  "name": "Panepon clone",
+  "short_name": "Panepon",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14141c",
+  "theme_color": "#14141c",
+  "icons": []
+}
