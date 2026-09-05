@@ -171,6 +171,22 @@ export class GameAudio {
     this.bgmTimer = null;
   }
 
+  private bgmBeforeSuspend = false;
+
+  /** 画面が隠れたときに呼ぶ。BGM のスケジューラを止め、AudioContext も止めて音を出さない。 */
+  suspend(): void {
+    this.bgmBeforeSuspend = this.bgmOn;
+    this.stopBgm();
+    if (this.ctx && this.ctx.state === "running") void this.ctx.suspend();
+  }
+
+  /** 画面に戻って再開するときに呼ぶ。止める前に BGM が鳴っていたら鳴らし直す。 */
+  resume(): void {
+    if (this.ctx && this.ctx.state === "suspended") void this.ctx.resume();
+    if (this.bgmBeforeSuspend) this.startBgm();
+    this.bgmBeforeSuspend = false;
+  }
+
   /** 危険状態でテンポを速くする。 */
   setDanger(on: boolean): void {
     this.tempo = on ? 172 : 126;

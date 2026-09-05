@@ -45,6 +45,13 @@ export class TouchInput {
     scene.input.on("pointerupoutside", this.onUp, this);
   }
 
+  /** 溜まっている操作を捨てる。ポーズ解除のタップを入れ替えとして扱わないために使う。 */
+  clear(): void {
+    this.queue = [];
+    this.drags.clear();
+    this.raisePointers.clear();
+  }
+
   destroy(): void {
     this.scene.input.off("pointerdown", this.onDown, this);
     this.scene.input.off("pointermove", this.onMove, this);

@@ -16,7 +16,8 @@ export class GameScene extends Phaser.Scene {
   private touches: TouchInput[] = [];
   private raiseHints: Phaser.GameObjects.Text[] = [];
   private accumulator = 0;
-  private paused = false;
+  /** 一時停止中か。P キー、または画面が隠れたときに true になる。 */
+  paused = false;
   private mode: GameMode = "endless";
   private cpuLevel: CpuLevel = "normal";
   private pauseText!: Phaser.GameObjects.Text;
@@ -100,10 +101,22 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.pauseText = this.add
-      .text(W / 2, H / 2, "PAUSE", { fontFamily: FONT, fontSize: "40px", color: TEXT_COLOR })
+      .text(W / 2, H / 2, "PAUSE\n\ntap / P to resume", { fontFamily: FONT, fontSize: "28px", color: TEXT_COLOR, align: "center" })
       .setOrigin(0.5)
       .setDepth(30)
       .setVisible(false);
+    // ポーズ中のタップ・クリックは再開だけに使う（入れ替えにはしない）
+    this.input.on("pointerdown", () => {
+      if (this.paused && !this.ended) this.setPaused(false);
+    });
+    // 画面が隠れたら（別アプリへ切り替え、タブ移動、画面オフ）止めて、BGM も止める
+    const onHidden = (): void => this.onHidden();
+    this.game.events.on("hidden", onHidden);
+    this.game.events.on("blur", onHidden);
+    this.events.once("shutdown", () => {
+      this.game.events.off("hidden", onHidden);
+      this.game.events.off("blur", onHidden);
+    });
     this.add
       .text(W / 2, H - 14, layout.touch ? "tap here: menu" : "P: pause   R: restart   Esc: menu   M: mute", {
         fontFamily: FONT,
@@ -143,8 +156,28 @@ export class GameScene extends Phaser.Scene {
 
   private togglePause(): void {
     if (this.ended) return;
-    this.paused = !this.paused;
-    this.pauseText.setVisible(this.paused);
+    this.setPaused(!this.paused);
+  }
+
+  private setPaused(on: boolean): void {
+    if (this.paused === on) return;
+    this.paused = on;
+    this.pauseText.setVisible(on);
+    if (on) {
+      audio.suspend();
+    } else {
+      this.touches.forEach((t) => t.clear());
+      this.accumulator = 0;
+      audio.resume();
+    }
+  }
+
+  private onHidden(): void {
+    if (this.ended) {
+      audio.suspend();
+      return;
+    }
+    this.setPaused(true);
   }
 
   private stepOnce(inputs: Input[]): void {
