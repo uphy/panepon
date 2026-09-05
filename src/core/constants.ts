@@ -84,7 +84,8 @@ export const SCORE_CAP = 99_999;
 /** せり上がり速度。スピードレベルから「1段上がるのに要するフレーム数」を返す。 */
 export function riseFramesPerRow(level: number): number {
   const lv = Math.min(99, Math.max(1, level));
-  return Math.max(12, Math.round(600 * Math.pow(0.955, lv - 1)));
+  // レベル1で1段12.5秒。以前の600Fは速すぎたので、全レベルを8割の速度（1.25倍のフレーム数）にした。
+  return Math.max(15, Math.round(750 * Math.pow(0.955, lv - 1)));
 }
 
 /** エンドレスでスピードレベルが1上がるのに必要な消去枚数。 */
