@@ -29,7 +29,8 @@ export class Haptics {
     } catch {
       // 保存できなくても動作には影響しない
     }
-    if (v) this.pulse(20);
+    // 切り替え時の確認用。端末が振動に対応しているかを、これで確かめられる長さにする
+    if (v) this.pulse(150);
   }
 
   toggle(): boolean {
@@ -47,37 +48,40 @@ export class Haptics {
     }
   }
 
-  /** 揃った瞬間。3枚消しは短く、同時消し・連鎖は規模に応じて長く。 */
+  /**
+   * 揃った瞬間。3枚消しは短く、同時消し・連鎖は規模に応じて長く。
+   * Android のモーターは 20ms 未満だとほぼ感じないので、最短でも 25ms にする。
+   */
   match(panels: number, chain: number): void {
     if (chain >= 5) {
-      this.pulse([50, 40, 60]);
+      this.pulse([70, 50, 90]);
       return;
     }
     if (chain >= 2 || panels >= 4) {
-      this.pulse(Math.min(60, 20 + (chain - 1) * 10 + Math.max(0, panels - 3) * 5));
+      this.pulse(Math.min(90, 40 + (chain - 1) * 12 + Math.max(0, panels - 3) * 8));
       return;
     }
-    this.pulse(10);
+    this.pulse(25);
   }
 
   /** おじゃまの着地。厚いほど長く。画面の揺れと同期する。 */
   garbageLand(height: number): void {
-    this.pulse(Math.min(120, 30 + height * 15));
+    this.pulse(Math.min(160, 50 + height * 20));
   }
 
   /** 天井に触れている間、数秒おきに短く2回。 */
   panic(now: number): void {
     if (now - this.lastPanic < 3000) return;
     this.lastPanic = now;
-    this.pulse([30, 60, 30]);
+    this.pulse([45, 70, 45]);
   }
 
   gameOver(): void {
-    this.pulse(200);
+    this.pulse(250);
   }
 
   win(): void {
-    this.pulse([40, 40, 40, 40, 80]);
+    this.pulse([50, 40, 50, 40, 120]);
   }
 }
 

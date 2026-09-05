@@ -37,7 +37,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
   for (let i = 0; i < 8; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
   const calls = await page.evaluate(() => (window as any).__vibrations);
-  expect(calls).toEqual([10]);
+  expect(calls).toEqual([25]);
 
   // CPU 側で4枚揃っても震えない。その攻撃（幅3の板）が自分の盤面に着地したときに震える
   await page.evaluate(() => {
@@ -56,7 +56,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   expect(cpuMatched).toBe(true);
   expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([]);
   for (let i = 0; i < 120; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
-  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([45]);
+  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([70]);
 
   // 厚い板ほど長く震える
   await page.evaluate(() => {
@@ -65,7 +65,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
     p.game.boards[0].pendingGarbage.push({ width: 6, height: 2, type: "normal" });
   });
   for (let i = 0; i < 200; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
-  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([60]);
+  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([90]);
 
   // メニューで OFF にすると保存され、以後は震えない
   await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
