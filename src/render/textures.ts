@@ -72,6 +72,41 @@ export function createTextures(scene: Phaser.Scene): void {
     }
   });
 
+  // ビックリパネル。灰色の地に「！」。通常の柄とは揃わない対戦専用のパネル。
+  for (const variant of ["", "-dark", "-bright"] as const) {
+    g.clear();
+    const base = variant === "-dark" ? 0x46464f : variant === "-bright" ? 0xd0d0dc : 0x9a9aa8;
+    g.fillStyle(shade(base, 0.7), 1);
+    g.fillRoundedRect(pad, pad, size, size, 5);
+    g.fillStyle(base, 1);
+    g.fillRoundedRect(pad + 1, pad + 1, size - 2, size - 4, 5);
+    g.fillStyle(shade(base, 1.25), 1);
+    g.fillRoundedRect(pad + 3, pad + 3, size - 6, 5, 3);
+    if (variant !== "-dark") {
+      g.fillStyle(0xffffff, 1);
+      g.fillRoundedRect(CELL / 2 - 3, 7, 6, 13, 2);
+      g.fillCircle(CELL / 2, 25, 3.2);
+    }
+    g.generateTexture(`panel-6${variant}`, CELL, CELL);
+  }
+
+  // ビックリパネルで送る灰色のおじゃま。石模様で通常のおじゃまと区別する。
+  g.clear();
+  g.fillStyle(0x4a4a52, 1);
+  g.fillRect(0, 0, CELL, CELL);
+  g.fillStyle(0x767680, 1);
+  g.fillRect(1, 1, CELL - 2, CELL - 2);
+  g.fillStyle(0x5c5c66, 1);
+  g.fillRect(1, 15, CELL - 2, 2);
+  g.fillRect(15, 1, 2, 14);
+  g.fillRect(7, 17, 2, 14);
+  g.fillRect(23, 17, 2, 14);
+  g.fillStyle(0x8a8a96, 1);
+  g.fillRect(3, 3, 10, 3);
+  g.fillRect(19, 3, 10, 3);
+  g.fillRect(11, 19, 10, 3);
+  g.generateTexture("garbage-shock", CELL, CELL);
+
   // おじゃま（通常）。ブロックの端を判別できるよう、単セルの繰り返し柄で描く。
   g.clear();
   g.fillStyle(GARBAGE_DARK, 1);

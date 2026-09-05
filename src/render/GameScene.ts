@@ -38,7 +38,8 @@ export class GameScene extends Phaser.Scene {
     const params = new URLSearchParams(location.search);
     const seed = Number(params.get("seed")) || (Date.now() & 0xffffff);
     const speedLevel = Number(params.get("speed")) || 1;
-    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel });
+    const shockMax = params.has("shock") ? Number(params.get("shock")) || 0 : undefined;
+    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel, shockMax });
     this.accumulator = 0;
     this.paused = false;
     this.ended = false;

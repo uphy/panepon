@@ -8,6 +8,12 @@ export const TOTAL_ROWS = ROWS + EXTRA_ROWS;
 /** 種類数。5種が既定、高難度で6種目（逆さんかく）が混ざる。 */
 export const DEFAULT_KINDS = 5;
 export const MAX_KINDS = 6;
+/** ビックリパネル（対戦専用の「！」付き灰色パネル）の柄番号。通常の柄とは揃わない。 */
+export const SHOCK_KIND = 6;
+/** 対戦でビックリパネルが混ざる頻度。この枚数を消すごとに、次のせり上がり行に1枚入る。 */
+export const DEFAULT_SHOCK_EVERY = 12;
+/** 対戦で1試合に出るビックリパネルの上限。超えると以後一切出ない。 */
+export const DEFAULT_SHOCK_MAX = 24;
 
 /** フレーム数ベースのタイミング（60fps想定）。 */
 export const TIMING = {

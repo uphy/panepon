@@ -37,6 +37,18 @@ export function garbageFromCombo(panels: number): GarbageSpec[] {
   return widths.map((width) => ({ width, height: 1, type: "normal" }));
 }
 
+/**
+ * ビックリパネルを n 個消したときに送られる灰色の板。幅6・厚さ1段の板が「n-2」枚、1枚ずつ分離して落ちる。
+ * 3個消しでも送れるのがビックリパネルの意味。単独で消せる最大は7個なので最大5枚。
+ */
+export function garbageFromShock(panels: number): GarbageSpec[] {
+  if (panels < 3) return [];
+  const count = Math.min(5, panels - 2);
+  const out: GarbageSpec[] = [];
+  for (let i = 0; i < count; i++) out.push({ width: COLS, height: 1, type: "shock" });
+  return out;
+}
+
 /** n連鎖で送られる板。幅6固定、厚さ n-1、上限12段。 */
 export function garbageFromChain(chain: number): GarbageSpec[] {
   if (chain < 2) return [];

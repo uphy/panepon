@@ -4,12 +4,13 @@ import {
   DEFAULT_KINDS,
   PANELS_PER_LEVEL,
   ROWS,
+  SHOCK_KIND,
   TIMING,
   TOTAL_ROWS,
   clearTiming,
   riseFramesPerRow,
 } from "./constants";
-import { garbageFromChain, garbageFromCombo, type GarbageSpec } from "./garbage";
+import { garbageFromChain, garbageFromCombo, garbageFromShock, type GarbageSpec } from "./garbage";
 import { Rng } from "./rng";
 import { capScore, matchScore } from "./scoring";
 import {
@@ -87,7 +88,7 @@ export class Board {
   /** このフレームで起きた出来事。描画・音の層が読む。 */
   events: BoardEvent[] = [];
   readonly garbage = new Map<number, GarbageBlock>();
-  readonly stats = { combos: 0, chains: 0, manualRows: 0 };
+  readonly stats = { combos: 0, chains: 0, manualRows: 0, shockSpawned: 0, shockCleared: 0 };
 
   private nextGarbageId = 1;
   private readonly rng: Rng;
@@ -95,6 +96,10 @@ export class Board {
   private readonly startLevel: number;
   private readonly speedUp: boolean;
   private readonly noRise: boolean;
+  private readonly shockMax: number;
+  private readonly shockEvery: number;
+  /** 次のせり上がり行にビックリパネルを入れる予約。 */
+  private shockDue = false;
   private stopRaiseFree = false;
   private dropSide = 0;
 
@@ -105,6 +110,8 @@ export class Board {
     this.level = this.startLevel;
     this.speedUp = opts.speedUp ?? false;
     this.noRise = opts.noRise ?? false;
+    this.shockMax = opts.shockMax ?? 0;
+    this.shockEvery = Math.max(1, opts.shockEvery ?? 12);
     this.cells = [];
     for (let r = 0; r < TOTAL_ROWS; r++) {
       const row: Cell[] = [];
@@ -202,7 +209,25 @@ export class Board {
       while (banned.has(k) && guard++ < 32) k = this.randomKind();
       row.push(k);
     }
+    if (this.shockDue && this.stats.shockSpawned < this.shockMax) this.insertShock(row);
     return row;
+  }
+
+  /** 行の1マスをビックリパネルにする。真上2段や左右がビックリパネルで揃ってしまう列は避ける。 */
+  private insertShock(row: Kind[]): void {
+    const start = this.rng.int(COLS);
+    for (let i = 0; i < COLS; i++) {
+      const c = (start + i) % COLS;
+      const a0 = this.cells[0][c];
+      const a1 = this.cells[1][c];
+      if (isPanel(a0) && a0.kind === SHOCK_KIND && isPanel(a1) && a1.kind === SHOCK_KIND) continue;
+      if (c >= 1 && row[c - 1] === SHOCK_KIND) continue;
+      if (c + 1 < COLS && row[c + 1] === SHOCK_KIND) continue;
+      row[c] = SHOCK_KIND;
+      this.stats.shockSpawned++;
+      this.shockDue = false;
+      return;
+    }
   }
 
   private hasMatched(): boolean {
@@ -676,7 +701,15 @@ export class Board {
 
     const gained = matchScore(n, chainNow);
     this.score = capScore(this.score + gained);
+    const beforeCleared = this.panelsCleared;
     this.panelsCleared += n;
+    // 消した枚数が shockEvery の倍数を跨ぐたびに、次のせり上がり行へビックリパネルを1枚予約する
+    if (
+      this.shockMax > this.stats.shockSpawned &&
+      Math.floor(this.panelsCleared / this.shockEvery) > Math.floor(beforeCleared / this.shockEvery)
+    ) {
+      this.shockDue = true;
+    }
 
     let stop = 0;
     if (n >= 4) stop += TIMING.stopComboBase + (n - 4) * TIMING.stopComboPerExtra;
@@ -688,7 +721,11 @@ export class Board {
       this.stopRaiseFree = true;
     }
 
-    const attack = [...garbageFromCombo(n), ...garbageFromChain(chainNow)];
+    // ビックリパネル同士の消去は灰色の板を送る（3個消しでも送れる）。通常パネルの同時消しは幅 n-1 の板。
+    const shockCount = list.filter(({ x, y }) => this.cells[y][x].kind === SHOCK_KIND).length;
+    const normalCount = n - shockCount;
+    this.stats.shockCleared += shockCount;
+    const attack = [...garbageFromCombo(normalCount), ...garbageFromShock(shockCount), ...garbageFromChain(chainNow)];
     if (attack.length > 0) {
       this.attacksOut.push(...attack);
       this.emit({ type: "attack", garbage: attack });

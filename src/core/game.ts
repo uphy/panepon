@@ -1,5 +1,6 @@
 import { CpuPlayer, type CpuLevel } from "./ai";
 import { Board } from "./board";
+import { DEFAULT_SHOCK_MAX } from "./constants";
 import type { BoardOptions, Input } from "./types";
 import { NO_INPUT } from "./types";
 
@@ -12,6 +13,8 @@ export interface GameOptions {
   kinds?: number;
   speedLevel?: number;
   cpuLevel?: CpuLevel;
+  /** 対戦でのビックリパネルの上限枚数。省略時は DEFAULT_SHOCK_MAX、0 で出さない。 */
+  shockMax?: number;
 }
 
 /**
@@ -35,9 +38,10 @@ export class Game {
     if (opts.mode === "endless") {
       this.boards = [new Board({ ...common, seed: opts.seed })];
     } else {
+      const shockMax = opts.shockMax ?? DEFAULT_SHOCK_MAX;
       this.boards = [
-        new Board({ ...common, seed: opts.seed }),
-        new Board({ ...common, seed: opts.seed + 1 }),
+        new Board({ ...common, seed: opts.seed, shockMax }),
+        new Board({ ...common, seed: opts.seed + 1, shockMax }),
       ];
       if (opts.mode === "cpu") this.cpu = new CpuPlayer(this.boards[1], opts.cpuLevel ?? "normal");
     }

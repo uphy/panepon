@@ -164,6 +164,36 @@ test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page 
   await page.screenshot({ path: `${SHOT}/versus.png` });
 });
 
+test("対戦: ビックリパネルと灰色のおじゃまが描画される", async ({ page }) => {
+  await page.goto("/?mode=versus&seed=11&bgm=0&countdown=0");
+  await waitForGame(page);
+  await page.evaluate(() => {
+    const p = (window as any).__panepon;
+    p.scene.scene.pause();
+    const [a, b] = p.game.boards;
+    a.setColumns([[6], [6], [1], [6], [2, 6], [3, 0]]);
+    a.cursor.x = 2;
+    a.cursor.y = 0;
+    b.setColumns([[0], [1], [2], [3], [4], [0]]);
+    b.placeGarbage(0, 1, 6, 1, "shock");
+    b.placeGarbage(0, 2, 6, 1, "normal");
+    b.placeGarbage(0, 3, 6, 1, "shock");
+  });
+  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__panepon.tick(ins), inputs);
+  await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
+  for (let i = 0; i < 6; i++) {
+    await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
+  }
+  // 3枚消しの灰色の板が相手に届く（消去中でない相手の盤面には即座に投下される）
+  const shockBlocks = await page.evaluate(() =>
+    [...(window as any).__panepon.game.boards[1].garbage.values()].filter((g: any) => g.type === "shock").length,
+  );
+  expect(shockBlocks).toBe(3);
+  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: `${SHOT}/shock.png` });
+});
+
 test("エンドレス: 天井まで積むとゲームオーバーの表示になる", async ({ page }) => {
   await page.goto("/?mode=endless&seed=3&bgm=0&countdown=0");
   await waitForGame(page);

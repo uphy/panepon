@@ -92,4 +92,8 @@ export interface BoardOptions {
   initialHeight?: number;
   /** 自動せり上がりを止める（テスト・パズル用）。 */
   noRise?: boolean;
+  /** ビックリパネルの上限枚数。0 なら出ない（1人用の既定）。 */
+  shockMax?: number;
+  /** この枚数を消すごとにビックリパネルを1枚混ぜる。 */
+  shockEvery?: number;
 }

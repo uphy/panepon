@@ -197,7 +197,7 @@ export class BoardView {
           if (cell.state === "popped") visible = false;
         } else {
           const g = b.garbage.get(cell.garbage);
-          key = "garbage";
+          key = g?.type === "shock" ? "garbage-shock" : "garbage";
           if (g?.state === "falling") dy = (g.fallTimer / TIMING.fallPerRow) * CELL;
           if (g?.state === "transforming") {
             if (cell.revealAt <= 0 && cell.revealKind !== EMPTY) key = `panel-${cell.revealKind}`;
@@ -245,7 +245,7 @@ export class BoardView {
     for (const spec of b.pendingGarbage) {
       const w = spec.width * 5;
       const h = Math.max(4, spec.height * 4);
-      this.pendingGfx.fillStyle(0x8a8a96, 1);
+      this.pendingGfx.fillStyle(spec.type === "shock" ? 0x5c5c66 : 0x8a8a96, 1);
       this.pendingGfx.fillRect(px, this.oy - 12 - h, w, h);
       px += w + 4;
     }
