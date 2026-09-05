@@ -35,7 +35,9 @@ export function layoutFor(mode: "menu" | "endless" | "versus" | "cpu"): Layout {
   const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
   const touch = isTouchDevice();
   if (portrait) {
-    if (mode === "versus" || mode === "cpu") return { width: 440, height: 640, portrait, touch };
+    // 対戦は2盤面を並べる。Android の戻るジェスチャ（画面端からの横スワイプ）を盤面のドラッグが踏まないよう、
+    // 左右に 33 論理px（実画面で約 29dp）の余白を取る。
+    if (mode === "versus" || mode === "cpu") return { width: 470, height: 640, portrait, touch };
     return { width: 300, height: 600, portrait, touch };
   }
   return { width: 800, height: 520, portrait, touch };

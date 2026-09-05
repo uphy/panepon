@@ -23,6 +23,8 @@ export class GameScene extends Phaser.Scene {
   private pauseText!: Phaser.GameObjects.Text;
   private ended = false;
   private wasDanger = false;
+  /** ゲーム用に履歴を積んでいるか。メニューへ戻るときに1つ戻して消す。 */
+  private historyPushed = false;
 
   constructor() {
     super("game");
@@ -58,7 +60,7 @@ export class GameScene extends Phaser.Scene {
       this.views.push(new BoardView(this, boards[0], ox, top, "1P", true));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
     } else {
-      const gap = layout.portrait ? 32 : 120;
+      const gap = layout.portrait ? 20 : 120;
       const ox1 = Math.floor(W / 2 - gap / 2 - BOARD_W);
       const ox2 = Math.floor(W / 2 + gap / 2);
       origins.push(ox1, ox2);
@@ -113,9 +115,25 @@ export class GameScene extends Phaser.Scene {
     const onHidden = (): void => this.onHidden();
     this.game.events.on("hidden", onHidden);
     this.game.events.on("blur", onHidden);
+    // Android の戻るジェスチャ・戻るボタンでアプリが閉じないよう、履歴を1つ積んで popstate を受ける。
+    // 戻る1回目はポーズ、ポーズ中や終了後の戻るはメニューへ。
+    history.pushState({ panepon: "game" }, "");
+    this.historyPushed = true;
+    const onPop = (): void => {
+      if (!this.historyPushed) return;
+      if (this.paused || this.ended) {
+        this.historyPushed = false;
+        this.toMenu();
+        return;
+      }
+      history.pushState({ panepon: "game" }, "");
+      this.setPaused(true);
+    };
+    window.addEventListener("popstate", onPop);
     this.events.once("shutdown", () => {
       this.game.events.off("hidden", onHidden);
       this.game.events.off("blur", onHidden);
+      window.removeEventListener("popstate", onPop);
     });
     this.add
       .text(W / 2, H - 14, layout.touch ? "tap here: menu" : "P: pause   R: restart   Esc: menu   M: mute", {
@@ -152,6 +170,13 @@ export class GameScene extends Phaser.Scene {
     audio.stopBgm();
     this.touches.forEach((t) => t.destroy());
     this.touches = [];
+    if (this.historyPushed) {
+      // 自分で積んだ履歴を消す。popstate は shutdown で外したリスナーには届かない。
+      this.historyPushed = false;
+      this.scene.start("menu");
+      history.back();
+      return;
+    }
     this.scene.start("menu");
   }
 
