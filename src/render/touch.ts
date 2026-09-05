@@ -1,76 +1,44 @@
 import Phaser from "phaser";
 import { Board, COLS, ROWS, type Input } from "../core";
-import { BOARD_H, BOARD_W, CELL, FONT } from "./theme";
+import { BOARD_H, BOARD_W, CELL } from "./theme";
 
-/** ドラッグを「入れ替え」と判定する横移動量。 */
+/** 横ドラッグを「入れ替え」と判定する移動量。 */
 const SWIPE_THRESHOLD = CELL * 0.35;
 /** これ以下の移動ならタップ扱い。 */
 const TAP_SLOP = 8;
 
+type DragMode = "pending" | "swipe";
+
 interface Drag {
-  pointerId: number;
   startX: number;
   startY: number;
   /** ドラッグ中のパネルが今いるマス。入れ替えるたびに追従する。 */
   cellX: number;
   cellY: number;
-  swiped: boolean;
+  mode: DragMode;
 }
 
 /**
  * 盤面へのタッチ・マウス操作を Input に変える。
  *
+ * - 2枚の境目をタップ: その2枚を入れ替える（1回で入れ替わる）
  * - パネルを横にドラッグ: その方向の隣と入れ替える。指を離さず引き続ければ連続で入れ替わる
- * - タップ: カーソルをそこへ移す。カーソルの中をタップしたら入れ替える
- * - RAISE ボタンを押し続ける: 手動せり上げ
+ * - 盤面の外を押している間: 手動せり上げ（GameScene が盤面外の指を振り分けて raisePointers に入れる）
  *
  * 操作はキューに積み、poll() が1フレームに1つずつ取り出す。
  */
 export class TouchInput {
   private queue: Input[] = [];
-  private drag: Drag | null = null;
-  private raiseHeld = false;
-  private raisePointer = -1;
-  readonly raiseButton: Phaser.GameObjects.Container;
+  private readonly drags = new Map<number, Drag>();
+  /** 盤面の外を押してせり上げている指。 */
+  readonly raisePointers = new Set<number>();
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly board: Board,
-    private readonly ox: number,
-    private readonly oy: number,
-    button: { x: number; y: number; width: number; height: number },
+    readonly ox: number,
+    readonly oy: number,
   ) {
-    const bg = scene.add
-      .rectangle(0, 0, button.width, button.height, 0x2c2c3c)
-      .setStrokeStyle(2, 0x55556a)
-      .setOrigin(0.5);
-    const vertical = button.height > button.width;
-    const label = scene.add
-      .text(0, 0, vertical ? "▲\nR\nA\nI\nS\nE" : "▲ RAISE", {
-        fontFamily: FONT,
-        fontSize: "18px",
-        color: "#dcdcea",
-        fontStyle: "bold",
-        align: "center",
-      })
-      .setOrigin(0.5);
-    this.raiseButton = scene.add.container(button.x + button.width / 2, button.y + button.height / 2, [bg, label]);
-    bg.setInteractive();
-    bg.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      this.raiseHeld = true;
-      this.raisePointer = p.id;
-      bg.setFillStyle(0x4a4a66);
-    });
-    const release = (p: Phaser.Input.Pointer): void => {
-      if (p.id !== this.raisePointer) return;
-      this.raiseHeld = false;
-      this.raisePointer = -1;
-      bg.setFillStyle(0x2c2c3c);
-    };
-    bg.on("pointerup", release);
-    bg.on("pointerout", release);
-    scene.input.on("pointerup", release);
-
     scene.input.on("pointerdown", this.onDown, this);
     scene.input.on("pointermove", this.onMove, this);
     scene.input.on("pointerup", this.onUp, this);
@@ -82,6 +50,8 @@ export class TouchInput {
     this.scene.input.off("pointermove", this.onMove, this);
     this.scene.input.off("pointerup", this.onUp, this);
     this.scene.input.off("pointerupoutside", this.onUp, this);
+    this.drags.clear();
+    this.raisePointers.clear();
   }
 
   /** 画面座標を盤面のマスに変換する。盤面の外なら null。 */
@@ -93,16 +63,20 @@ export class TouchInput {
     return { x: Math.max(0, Math.min(COLS - 1, x)), y: Math.max(0, Math.min(ROWS - 1, y)) };
   }
 
+  /** せり上げ中の指があるか。 */
+  get raising(): boolean {
+    return this.raisePointers.size > 0;
+  }
+
   private onDown(p: Phaser.Input.Pointer): void {
-    if (this.drag) return;
     const cell = this.cellAt(p.x, p.y);
     if (!cell) return;
-    this.drag = { pointerId: p.id, startX: p.x, startY: p.y, cellX: cell.x, cellY: cell.y, swiped: false };
+    this.drags.set(p.id, { startX: p.x, startY: p.y, cellX: cell.x, cellY: cell.y, mode: "pending" });
   }
 
   private onMove(p: Phaser.Input.Pointer): void {
-    const d = this.drag;
-    if (!d || p.id !== d.pointerId) return;
+    const d = this.drags.get(p.id);
+    if (!d) return;
     const dx = p.x - d.startX;
     if (Math.abs(dx) < SWIPE_THRESHOLD) return;
     const dir = dx > 0 ? 1 : -1;
@@ -113,27 +87,25 @@ export class TouchInput {
     this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false, cursorTo: { x: left, y: d.cellY } });
     d.cellX = target;
     d.startX += dir * CELL;
-    d.swiped = true;
+    d.mode = "swipe";
   }
 
   private onUp(p: Phaser.Input.Pointer): void {
-    const d = this.drag;
-    if (!d || p.id !== d.pointerId) return;
-    this.drag = null;
-    if (d.swiped) return;
+    this.raisePointers.delete(p.id);
+    const d = this.drags.get(p.id);
+    if (!d) return;
+    this.drags.delete(p.id);
+    if (d.mode !== "pending") return;
     if (Math.abs(p.x - d.startX) > TAP_SLOP || Math.abs(p.y - d.startY) > TAP_SLOP) return;
-    const { cursor } = this.board;
-    const inCursor = d.cellY === cursor.y && (d.cellX === cursor.x || d.cellX === cursor.x + 1);
-    if (inCursor) {
-      this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false });
-    } else {
-      const x = Math.min(COLS - 2, d.cellX);
-      this.queue.push({ moveX: 0, moveY: 0, swap: false, raise: false, cursorTo: { x, y: d.cellY } });
-    }
+    // タップ1回で入れ替える。タップ位置に最も近いマスの境目を挟む2枚が対象。
+    // マスの中央を叩いたときは、左右のうち近い側の隣と入れ替える。
+    const boundary = Math.round((d.startX - this.ox) / CELL);
+    const left = Math.max(0, Math.min(COLS - 2, boundary - 1));
+    this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false, cursorTo: { x: left, y: d.cellY } });
   }
 
-  /** キューの先頭を1つ取り出す。何もなければ null。せり上げの押下状態は毎回返す。 */
+  /** キューの先頭を1つ取り出す。何もなければ null。せり上げの状態は毎回返す。 */
   poll(): { action: Input | null; raise: boolean } {
-    return { action: this.queue.shift() ?? null, raise: this.raiseHeld };
+    return { action: this.queue.shift() ?? null, raise: this.raising };
   }
 }

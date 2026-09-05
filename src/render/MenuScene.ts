@@ -74,11 +74,11 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const help = layout.touch
-      ? ["Touch: drag a panel sideways to swap", "tap to move the cursor, tap the cursor to swap", "hold RAISE to push the stack up"]
+      ? ["Touch: tap between two panels to swap them", "or drag a panel sideways", "hold outside the board to push the stack up"]
       : [
           "P1: ←↑↓→ move   Z swap   X raise        P2: WASD move   F swap   H raise",
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",
-          "Mouse: drag a panel sideways to swap, click to move the cursor",
+          "Mouse: click between two panels to swap them, or drag a panel sideways. Hold outside the board to raise",
         ];
     this.add
       .text(cx, H - 70, help.join("\n"), {

@@ -13,6 +13,7 @@ export class GameScene extends Phaser.Scene {
   private views: BoardView[] = [];
   private inputs: PlayerInput[] = [];
   private touches: TouchInput[] = [];
+  private raiseHints: Phaser.GameObjects.Text[] = [];
   private accumulator = 0;
   private paused = false;
   private mode: GameMode = "endless";
@@ -66,21 +67,30 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5);
     }
 
-    // タッチ・マウス操作。盤面のドラッグ・タップと RAISE ボタンはどの端末でも受け付ける。
-    // ボタンは縦画面では盤面の下、横画面では盤面の外側の脇に置く。
+    // タッチ・マウス操作。タップ・横ドラッグで入れ替え。どの端末でも受け付ける。
     boards.forEach((b, i) => {
-      const ox = origins[i];
-      const button = layout.portrait
-        ? { x: ox, y: top + BOARD_H + 30, width: BOARD_W, height: 44 }
-        : {
-            x: boards.length === 2 && i === 0 ? ox - 16 - 64 : ox + BOARD_W + 16,
-            y: top + BOARD_H - 150,
-            width: 64,
-            height: 150,
-          };
-      const t = new TouchInput(this, b, ox, top, button);
+      const t = new TouchInput(this, b, origins[i], top);
       this.touches.push(t);
       this.inputs[i].touch = t;
+    });
+    // 盤面の外を押している間は手動せり上げ。対戦では左右どちらの盤面に近いかで振り分ける。
+    // 盤面の下に薄い矢印を出し、押している間だけ明るくする。
+    this.raiseHints = boards.map((_, i) =>
+      this.add
+        .text(origins[i] + BOARD_W / 2, top + BOARD_H + (layout.portrait ? 44 : 34), "▲ ▲ ▲", {
+          fontFamily: FONT,
+          fontSize: "16px",
+          color: "#3a3a4c",
+        })
+        .setOrigin(0.5),
+    );
+    this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      if (this.ended) return;
+      if (this.touches.some((t) => t.cellAt(p.x, p.y))) return;
+      if (p.y > H - 22) return; // 画面下端のメニュー用テキスト
+      let nearest = 0;
+      if (this.touches.length === 2) nearest = p.x < W / 2 ? 0 : 1;
+      this.touches[nearest].raisePointers.add(p.id);
     });
 
     this.pauseText = this.add
@@ -154,6 +164,10 @@ export class GameScene extends Phaser.Scene {
       if (this.game_.finished) this.finish();
     }
     this.views.forEach((v) => v.draw());
+    this.raiseHints.forEach((h, i) => {
+      const on = this.inputs[i]?.lastRaise ?? false;
+      h.setColor(on ? "#dcdcea" : "#3a3a4c");
+    });
   }
 
   private finish(): void {

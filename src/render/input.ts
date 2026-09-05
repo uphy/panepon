@@ -45,6 +45,8 @@ export class PlayerInput {
   padIndex: number;
   /** タッチ操作。あればキーボード・パッドと合成する。 */
   touch: TouchInput | null = null;
+  /** 直前の poll でせり上げが押されていたか（描画のヒント用）。 */
+  lastRaise = false;
 
   constructor(
     private scene: Phaser.Scene,
@@ -135,6 +137,7 @@ export class PlayerInput {
         }
       }
     }
+    this.lastRaise = input.raise;
     return input;
   }
 }
