@@ -25,6 +25,8 @@ export interface Cell {
   chain: boolean;
   /** 入れ替えアニメーション用。どちらから来たか。 */
   swapFrom: -1 | 0 | 1;
+  /** 消去時: 点滅の残りフレーム。0になると揃った柄を見せる段階に入る。 */
+  flashTimer: number;
   /** 消去時: 何フレーム後に消えるか。 */
   popAt: number;
   /** 消去時: 何フレーム後に空になるか。 */

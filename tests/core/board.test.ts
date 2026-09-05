@@ -98,7 +98,7 @@ describe("消去", () => {
     expect(m[0].panels).toBe(3);
     expect(m[0].chain).toBe(1);
     expect(b.score).toBe(30);
-    run(b, TIMING.flash + 3 * TIMING.popInterval + TIMING.popTail + TIMING.fallPerRow * 2);
+    run(b, TIMING.flash + TIMING.face + 3 * TIMING.popInterval + TIMING.popTail + TIMING.hoverClear + TIMING.fallPerRow * 2);
     expect(b.cell(2, 0).kind).toBe(2);
     expect(b.cell(0, 0).kind).toBe(EMPTY);
   });
@@ -181,10 +181,10 @@ describe("連鎖", () => {
   });
 
   it("連鎖中はせり上がりが止まる", () => {
-    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, speedLevel: 99 });
+    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, speedLevel: 1 });
     b.setColumns(CHAIN3);
     moveCursor(b, 0, 4);
-    const events = press(b, { swap: true }, 200);
+    const events = press(b, { swap: true }, 340);
     expect(matches(events)).toHaveLength(3);
     // 3連鎖の消去処理は終わっているが、停止時間はまだ残っている
     expect(b.stopTimer).toBeGreaterThan(0);
@@ -272,7 +272,7 @@ describe("せり上がりとゲームオーバー", () => {
     const b = emptyBoard();
     b.setColumns(CHAIN3);
     moveCursor(b, 0, 4);
-    const events = press(b, { swap: true }, 200);
+    const events = press(b, { swap: true }, 340);
     expect(matches(events)).toHaveLength(3);
     expect(b.stopTimer).toBeGreaterThan(TIMING.manualRisePerRow * 2);
     const score = b.score;

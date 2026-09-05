@@ -170,7 +170,8 @@ export class BoardView {
           key = `panel-${cell.kind}`;
           if (cell.state === "swapping") dx = cell.swapFrom * (cell.timer / TIMING.swap) * CELL;
           if (cell.state === "falling") dy = (cell.fallTimer / TIMING.fallPerRow) * CELL;
-          if (cell.state === "matched") key = blink ? `panel-${cell.kind}-bright` : `panel-${cell.kind}`;
+          // 点滅（flash）→ 揃った柄を明るく見せる（face）→ 1枚ずつ消える
+          if (cell.state === "matched") key = cell.flashTimer > 0 && blink ? `panel-${cell.kind}-bright` : cell.flashTimer > 0 ? `panel-${cell.kind}` : `panel-${cell.kind}-bright`;
           if (cell.state === "popped") visible = false;
         } else {
           const g = b.garbage.get(cell.garbage);

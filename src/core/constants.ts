@@ -14,19 +14,21 @@ export const TIMING = {
   /** 入れ替えにかかるフレーム数。原作の4フレームに合わせる。 */
   swap: 4,
   /** 入れ替えで空中に出たパネルが落ち始めるまでの猶予。 */
-  hoverSwap: 8,
-  /** 消去でできた空間に落ちるパネルの猶予（即落下）。 */
-  hoverClear: 0,
+  hoverSwap: 12,
+  /** 消えたパネルの上に乗っていたパネルが落ち始めるまでの猶予。ここでアクティブ連鎖を仕込む。 */
+  hoverClear: 12,
   /** おじゃまパネルが落ち始めるまでの猶予。 */
   hoverGarbage: 6,
   /** 1段落ちるのにかかるフレーム数。 */
   fallPerRow: 2,
   /** 消去時の点滅時間。 */
-  flash: 24,
-  /** 点滅後、1枚ずつ消えていく間隔。 */
-  popInterval: 8,
-  /** 最後の1枚が消えてから上のパネルが落ち始めるまで。 */
-  popTail: 6,
+  flash: 44,
+  /** 点滅が終わってから1枚目が消えるまで、揃った柄を見せる時間。 */
+  face: 20,
+  /** 1枚ずつ消えていく間隔。 */
+  popInterval: 9,
+  /** 最後の1枚が消えてから上のパネルが浮き始めるまで。 */
+  popTail: 0,
   /** おじゃま変身の点滅時間。 */
   transformFlash: 24,
   /** 変身で1マスずつパネル柄が現れる間隔。 */
@@ -49,6 +51,29 @@ export const TIMING = {
   /** 危険状態（天井接触）で消したときの停止時間の倍率。 */
   stopDangerMultiplier: 2,
 } as const;
+
+/** スピードレベルで変わる消去・落下のタイミング。レベル1の値から、レベル50で最短になる。 */
+export interface ClearTiming {
+  flash: number;
+  face: number;
+  popInterval: number;
+  hoverClear: number;
+  hoverSwap: number;
+  transformHover: number;
+}
+
+export function clearTiming(level: number): ClearTiming {
+  const t = Math.max(0, Math.min(1, (level - 1) / 49));
+  const lerp = (a: number, b: number): number => Math.round(a + (b - a) * t);
+  return {
+    flash: lerp(TIMING.flash, 28),
+    face: lerp(TIMING.face, 10),
+    popInterval: lerp(TIMING.popInterval, 5),
+    hoverClear: lerp(TIMING.hoverClear, 4),
+    hoverSwap: lerp(TIMING.hoverSwap, 4),
+    transformHover: lerp(TIMING.transformHover, 4),
+  };
+}
 
 /** 危険状態（BGM切り替え）とみなす高さ。この行以上にパネルがあると危険。 */
 export const DANGER_ROW = ROWS - 2;

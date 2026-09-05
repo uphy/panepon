@@ -6,6 +6,7 @@ import {
   ROWS,
   TIMING,
   TOTAL_ROWS,
+  clearTiming,
   riseFramesPerRow,
 } from "./constants";
 import { garbageFromChain, garbageFromCombo, type GarbageSpec } from "./garbage";
@@ -31,6 +32,7 @@ export function emptyCell(): Cell {
     fallTimer: 0,
     chain: false,
     swapFrom: 0,
+    flashTimer: 0,
     popAt: 0,
     removeAt: 0,
     revealKind: EMPTY,
@@ -310,6 +312,7 @@ export class Board {
             break;
           case "matched":
           case "popped":
+            if (cell.flashTimer > 0) cell.flashTimer--;
             cell.popAt--;
             cell.removeAt--;
             if (cell.state === "matched" && cell.popAt <= 0) {
@@ -348,7 +351,10 @@ export class Board {
         if (!isPanel(cell)) continue;
         const below = this.cells[r - 1][c];
         if (cell.state === "idle") {
-          if (isEmptyCell(below)) this.startHover(c, r, cell.chain ? TIMING.hoverClear : TIMING.hoverSwap);
+          if (isEmptyCell(below)) {
+            const ct = clearTiming(this.level);
+            this.startHover(c, r, cell.chain ? ct.hoverClear : ct.hoverSwap);
+          }
           continue;
         }
         if (cell.state === "falling") {
@@ -531,7 +537,7 @@ export class Board {
           i++;
         }
       }
-      g.transformEnd = TIMING.transformFlash + i * TIMING.transformInterval + TIMING.transformHover;
+      g.transformEnd = TIMING.transformFlash + i * TIMING.transformInterval + clearTiming(this.level).transformHover;
       this.emit({ type: "garbageTransform", id });
     }
   }
@@ -684,12 +690,14 @@ export class Board {
       this.emit({ type: "attack", garbage: attack });
     }
 
+    const ct = clearTiming(this.level);
     list.forEach(({ x, y }, i) => {
       const cell = this.cells[y][x];
       cell.state = "matched";
       cell.chain = false;
-      cell.popAt = TIMING.flash + i * TIMING.popInterval;
-      cell.removeAt = TIMING.flash + n * TIMING.popInterval + TIMING.popTail;
+      cell.flashTimer = ct.flash;
+      cell.popAt = ct.flash + ct.face + i * ct.popInterval;
+      cell.removeAt = ct.flash + ct.face + n * ct.popInterval + TIMING.popTail;
     });
     this.emit({ type: "match", panels: n, chain: chainNow, x: list[0].x, y: list[0].y, score: gained });
     this.triggerGarbageTransform(list);
