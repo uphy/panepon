@@ -37,7 +37,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
   for (let i = 0; i < 8; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
   const calls = await page.evaluate(() => (window as any).__vibrations);
-  expect(calls).toEqual([25]);
+  expect(calls).toEqual([15]);
 
   // CPU 側で4枚揃っても震えない。その攻撃（幅3の板）が自分の盤面に着地したときに震える
   await page.evaluate(() => {

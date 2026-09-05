@@ -54,18 +54,18 @@ export class Haptics {
 
   /**
    * 揃った瞬間。3枚消しは短く、同時消し・連鎖は規模に応じて長く。
-   * Android のモーターは 20ms 未満だとほぼ感じないので、最短でも 25ms にする。
+   * Pixel 8a で 25ms は強く感じたので、3枚消しは 15ms のごく軽い手応えにする。
    */
   match(panels: number, chain: number): void {
     if (chain >= 5) {
-      this.pulse([70, 50, 90]);
+      this.pulse([40, 50, 60]);
       return;
     }
     if (chain >= 2 || panels >= 4) {
-      this.pulse(Math.min(90, 40 + (chain - 1) * 12 + Math.max(0, panels - 3) * 8));
+      this.pulse(Math.min(60, 25 + (chain - 1) * 8 + Math.max(0, panels - 3) * 5));
       return;
     }
-    this.pulse(25);
+    this.pulse(15);
   }
 
   /** おじゃまの着地。厚いほど長く。画面の揺れと同期する。 */

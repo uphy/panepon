@@ -113,12 +113,7 @@ export class MenuScene extends Phaser.Scene {
         ];
     // 振動の切り替え。対応端末（Android など）でだけ出す
     if (haptics.supported) {
-      // 直近の呼び出し結果も添える。ok なのに震えないなら端末側の設定、blocked ならブラウザが拒否している
-      const label = (): string => {
-        const state = haptics.enabled ? "ON" : "OFF";
-        const r = haptics.lastResult === null ? "" : haptics.lastResult ? "  (ok)" : "  (blocked)";
-        return `VIBRATION: ${state}${r}`;
-      };
+      const label = (): string => `VIBRATION: ${haptics.enabled ? "ON" : "OFF"}`;
       const t = this.add
         .text(cx, H - 78, label(), { fontFamily: FONT, fontSize: "13px", color: "#9a9ab0" })
         .setOrigin(0.5)
