@@ -23,6 +23,8 @@ export interface Cell {
   fallTimer: number;
   /** 連鎖フラグ。消去で落ちたパネルに付き、着地して揃わなければ消える。 */
   chain: boolean;
+  /** 着地後に連鎖フラグを保つ残りフレーム。 */
+  chainGrace: number;
   /** 入れ替えアニメーション用。どちらから来たか。 */
   swapFrom: -1 | 0 | 1;
   /** 消去時: 点滅の残りフレーム。0になると揃った柄を見せる段階に入る。 */

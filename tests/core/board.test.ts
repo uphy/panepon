@@ -172,6 +172,58 @@ describe("連鎖", () => {
     expect(b.score).toBe(50 + 30 + 30 + 50 + 30 + 80);
   });
 
+  it("浮いている（落下前の猶予中の）パネルは入れ替えて戻せる", () => {
+    const b = emptyBoard();
+    b.setColumns([[0, 1], []]);
+    moveCursor(b, 0, 1);
+    press(b, { swap: true }, TIMING.swap);
+    expect(b.cell(1, 1).kind).toBe(1);
+    expect(b.cell(1, 1).state).toBe("hover");
+    expect(b.trySwap()).toBe(true);
+    run(b, TIMING.swap);
+    expect(b.cell(0, 1).kind).toBe(1);
+    expect(b.cell(0, 1).state).toBe("idle");
+    expect(b.cell(1, 1).kind).toBe(EMPTY);
+  });
+
+  it("連鎖フラグ付きのパネルが着地した直後に隣を入れ替えて揃えると連鎖になる", () => {
+    const b = emptyBoard();
+    // col0 の 4 を右へ抜くと 0 0 0 が縦に揃い、上の 1 が row 0 まで落ちる。
+    // 着地時点で row 0 は 1 1 2 1 なので揃わないが、猶予内に (2,0) と (3,0) を入れ替えると 1 1 1 になる。
+    b.setColumns([[0, 0, 4, 0, 1], [1], [2, 3], [1]]);
+    moveCursor(b, 0, 2);
+    const events = press(b, { swap: true }, 1);
+    let landed = false;
+    for (let f = 0; f < 300 && !landed; f++) {
+      events.push(...run(b, 1));
+      landed = b.events.some((e) => e.type === "land" && e.x === 0 && e.y === 0);
+    }
+    expect(landed).toBe(true);
+    expect(b.cell(0, 0).kind).toBe(1);
+    // 着地から2フレーム後に入れ替える
+    run(b, 2);
+    moveCursor(b, 2, 0);
+    events.push(...press(b, { swap: true }, 30));
+    const m = matches(events);
+    expect(m.map((e) => e.chain)).toEqual([1, 2]);
+  });
+
+  it("着地した連鎖フラグは猶予を過ぎると消える", () => {
+    const b = emptyBoard();
+    b.setColumns([[0, 0, 4, 0, 1], [1], [2, 3], [1]]);
+    moveCursor(b, 0, 2);
+    const events = press(b, { swap: true }, 1);
+    let landed = false;
+    for (let f = 0; f < 300 && !landed; f++) {
+      events.push(...run(b, 1));
+      landed = b.events.some((e) => e.type === "land" && e.x === 0 && e.y === 0);
+    }
+    run(b, TIMING.chainGrace + TIMING.swap + 2);
+    moveCursor(b, 2, 0);
+    events.push(...press(b, { swap: true }, 30));
+    expect(matches(events).map((e) => e.chain)).toEqual([1, 1]);
+  });
+
   it("入れ替えで落としたパネルは連鎖にならない", () => {
     const b = emptyBoard();
     b.setColumns([[0], [0], [1, 0]]);

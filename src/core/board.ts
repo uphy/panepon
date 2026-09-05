@@ -31,6 +31,7 @@ export function emptyCell(): Cell {
     timer: 0,
     fallTimer: 0,
     chain: false,
+    chainGrace: 0,
     swapFrom: 0,
     flashTimer: 0,
     popAt: 0,
@@ -270,8 +271,9 @@ export class Board {
     const b = this.cells[y][x + 1];
     if (a.garbage >= 0 || b.garbage >= 0) return false;
     if (a.kind === EMPTY && b.kind === EMPTY) return false;
+    // 浮いている（落下前の猶予中の）パネルも入れ替えられる。原作どおり、動かした直後なら戻せる。
     const swappable = (c: Cell): boolean =>
-      c.kind === EMPTY || c.state === "idle" || c.state === "swapping";
+      c.kind === EMPTY || c.state === "idle" || c.state === "swapping" || c.state === "hover";
     if (!swappable(a) || !swappable(b)) return false;
     // 空白側に、上から落ちてくる最中のパネルが着地する寸前でも入れ替えは通す（割り込ませ）。
     this.cells[y][x] = b;
@@ -401,6 +403,7 @@ export class Board {
     const cell = this.cells[y][x];
     cell.state = "idle";
     cell.fallTimer = 0;
+    if (cell.chain) cell.chainGrace = TIMING.chainGrace;
     if (y < ROWS) this.emit({ type: "land", x, y });
   }
 
@@ -477,6 +480,7 @@ export class Board {
         const cell = this.cells[g.y][c];
         const p = panelCell(cell.revealKind);
         p.chain = true;
+        p.chainGrace = TIMING.chainGrace;
         this.cells[g.y][c] = p;
         for (let r = g.y + 1; r < g.y + g.height; r++) {
           const rest = this.cells[r][c];
@@ -719,6 +723,10 @@ export class Board {
         if (!isPanel(cell) || !cell.chain || cell.state !== "idle") continue;
         const below = r > 0 ? this.cells[r - 1][c] : null;
         if (below && isPanel(below) && below.state === "swapping") continue;
+        if (cell.chainGrace > 0) {
+          cell.chainGrace--;
+          continue;
+        }
         cell.chain = false;
       }
     }
