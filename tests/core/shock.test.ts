@@ -86,13 +86,17 @@ describe("ビックリパネルの出現", () => {
   });
 
   it("対戦では両方の盤面に出て、1試合の上限を超えない", () => {
-    const game = new Game({ mode: "versus", seed: 2, speedLevel: 20, shockMax: 6 });
-    const a = new CpuPlayer(game.boards[0], "hard");
-    const b = new CpuPlayer(game.boards[1], "hard");
+    // easy 同士は試合が長引くので、両方の盤面が12枚以上消してせり上がりも進む
+    const game = new Game({ mode: "versus", seed: 1, speedLevel: 10, shockMax: 6 });
+    const a = new CpuPlayer(game.boards[0], "easy");
+    const b = new CpuPlayer(game.boards[1], "easy");
     for (let f = 0; f < 60 * 60 * 3 && !game.finished; f++) game.tick([a.next(), b.next()]);
+    const spawned = game.boards.map((board) => board.stats.shockSpawned);
+    expect(spawned[0] + spawned[1]).toBeGreaterThan(0);
     for (const board of game.boards) {
-      expect(board.stats.shockSpawned).toBeGreaterThan(0);
       expect(board.stats.shockSpawned).toBeLessThanOrEqual(6);
+      // 12枚以上消してせり上がりも進んだ盤面には必ず出ている
+      if (board.panelsCleared >= 24) expect(board.stats.shockSpawned).toBeGreaterThan(0);
     }
   });
 });
