@@ -35,12 +35,15 @@ export const TIMING = {
   popInterval: 9,
   /** 最後の1枚が消えてから上のパネルが浮き始めるまで。 */
   popTail: 0,
-  /** おじゃま変身の点滅時間。 */
-  transformFlash: 24,
+  /**
+   * おじゃま変身の点滅時間。
+   * 点滅から落下までの間、板の下を操作して連鎖を仕込めるのが原作の遊び方なので、幅6の板で2.5秒ほどかかる長さにしている。
+   */
+  transformFlash: 60,
   /** 変身で1マスずつパネル柄が現れる間隔。 */
-  transformInterval: 6,
+  transformInterval: 10,
   /** 変身完了後、落ちてくるまでの間隔（難易度で変わる）。 */
-  transformHover: 16,
+  transformHover: 30,
   /** 手動せり上げで1段上がるのにかかるフレーム数。 */
   manualRisePerRow: 4,
   /** 天井に触れてからゲームオーバーになるまでの猶予。 */
@@ -82,7 +85,7 @@ export function clearTiming(level: number): ClearTiming {
     popInterval: lerp(TIMING.popInterval, 5),
     hoverClear: lerp(TIMING.hoverClear, 4),
     hoverSwap: lerp(TIMING.hoverSwap, 4),
-    transformHover: lerp(TIMING.transformHover, 4),
+    transformHover: lerp(TIMING.transformHover, 12),
   };
 }
 

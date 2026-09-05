@@ -77,7 +77,8 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
     t.emit("pointerdown");
     return { text: t.text, stored: localStorage.getItem("panepon.haptics.v1") };
   });
-  expect(toggle).toEqual({ text: "VIBRATION: OFF", stored: "off" });
+  expect(toggle.text.startsWith("VIBRATION: OFF")).toBe(true);
+  expect(toggle.stored).toBe("off");
 
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));

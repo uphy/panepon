@@ -22,6 +22,9 @@ export class Haptics {
     return this.on;
   }
 
+  /** 直近の navigator.vibrate() の戻り値。false はブラウザが拒否した（未操作・非対応など）ことを示す。 */
+  lastResult: boolean | null = null;
+
   setEnabled(v: boolean): void {
     this.on = v;
     try {
@@ -42,9 +45,10 @@ export class Haptics {
     if (!this.supported || !this.on) return;
     if (typeof document !== "undefined" && document.hidden) return;
     try {
-      navigator.vibrate(pattern);
+      this.lastResult = navigator.vibrate(pattern);
     } catch {
       // 一部ブラウザはユーザー操作前の呼び出しを例外にする
+      this.lastResult = false;
     }
   }
 
