@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { Board, COLS, EMPTY, ROWS, TIMING, TOTAL_ROWS, isPanel, type BoardEvent } from "../core";
 import { BOARD_BG, BOARD_H, BOARD_W, CELL, FONT, TEXT_COLOR } from "./theme";
 import { audio } from "./shared";
+import { haptics } from "./haptics";
 
 /** 描画する行の範囲。可視12段の上に、降ってくるおじゃまが見えるぶんだけ余裕を持たせる。 */
 const DRAW_ROWS = Math.min(TOTAL_ROWS, ROWS + 6);
@@ -90,8 +91,12 @@ export class BoardView {
   /** 1枚ずつ消える音の通し番号。揃うたびに 0 に戻し、tick をまたいでも音程が上がり続けるようにする。 */
   private popIndex = 0;
 
-  /** Board のイベントを音と演出に変える。tick 直後に呼ぶ。負け・勝ちの音は GameScene が鳴らす。 */
-  handleEvents(events: BoardEvent[], soundOn: boolean): void {
+  /**
+   * Board のイベントを音と演出に変える。tick 直後に呼ぶ。負け・勝ちの音は GameScene が鳴らす。
+   * hapticOn は自分が触っている盤面だけ true にする（CPU の盤面で震わせない）。
+   */
+  handleEvents(events: BoardEvent[], soundOn: boolean, hapticOn = false): void {
+    if (hapticOn && this.board.panic && !this.board.gameOver) haptics.panic(this.scene.time.now);
     for (const e of events) {
       switch (e.type) {
         case "swap":
@@ -103,6 +108,7 @@ export class BoardView {
         case "match":
           this.popIndex = 0;
           if (soundOn) audio.match(e.panels, e.chain);
+          if (hapticOn) haptics.match(e.panels, e.chain);
           this.popup(e.x, e.y, e.panels, e.chain);
           break;
         case "pop":
@@ -116,6 +122,7 @@ export class BoardView {
           break;
         case "garbageLand":
           if (soundOn) audio.garbageLand(e.height);
+          if (hapticOn) haptics.garbageLand(e.height);
           break;
         case "garbageTransform":
           if (soundOn) audio.garbageTransform();

@@ -4,6 +4,7 @@ import { recordCpuResult, recordEndless } from "./highscore";
 import { BoardView } from "./BoardView";
 import { P1_KEYS, P2_KEYS, PlayerInput } from "./input";
 import { audio } from "./shared";
+import { haptics } from "./haptics";
 import { TouchInput } from "./touch";
 import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, layoutFor } from "./theme";
 
@@ -153,6 +154,7 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-R", () => this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel }));
     kb.on("keydown-ESC", () => this.toMenu());
     kb.on("keydown-M", () => audio.setMuted(!audio.muted));
+    kb.on("keydown-V", () => haptics.toggle());
     kb.on("keydown", () => audio.start());
     this.input.on("pointerdown", () => audio.start());
 
@@ -251,7 +253,7 @@ export class GameScene extends Phaser.Scene {
 
   private stepOnce(inputs: Input[]): void {
     this.game_.tick(inputs);
-    this.game_.boards.forEach((b, i) => this.views[i].handleEvents(b.events, true));
+    this.game_.boards.forEach((b, i) => this.views[i].handleEvents(b.events, true, Boolean(this.inputs[i])));
   }
 
   override update(_time: number, delta: number): void {
@@ -283,8 +285,13 @@ export class GameScene extends Phaser.Scene {
     const g = this.game_;
     // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音
     const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" && g.winner === 0;
-    if (humanWon) audio.win();
-    else audio.lose();
+    if (humanWon) {
+      audio.win();
+      haptics.win();
+    } else {
+      audio.lose();
+      haptics.gameOver();
+    }
     // 結果表示のあと、盤面の中をタップ（クリック）するとやり直す
     this.time.delayedCall(800, () => {
       this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {

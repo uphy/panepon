@@ -1,0 +1,96 @@
+import { expect, test, devices } from "@playwright/test";
+
+const pixel = devices["Pixel 7"];
+test.use({
+  viewport: pixel.viewport,
+  deviceScaleFactor: pixel.deviceScaleFactor,
+  isMobile: pixel.isMobile,
+  hasTouch: pixel.hasTouch,
+  userAgent: pixel.userAgent,
+});
+
+/** navigator.vibrate を差し替えて呼び出しを記録する。 */
+const RECORD_VIBRATE = `
+  window.__vibrations = [];
+  try {
+    Navigator.prototype.vibrate = function (p) { window.__vibrations.push(p); return true; };
+  } catch (e) {}
+`;
+
+test("揃うと自分の盤面だけ震え、メニューの切り替えで止まる", async ({ page }) => {
+  await page.addInitScript(RECORD_VIBRATE);
+  await page.goto("/?mode=cpu&cpu=easy&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.evaluate(() => {
+    const p = (window as any).__panepon;
+    p.scene.scene.pause();
+    (window as any).__vibrations = [];
+    // 1P: 3枚消し。2P（CPU）: 4枚同時消し
+    p.game.boards[0].setColumns([[0], [0], [1], [0], [2], [3]]);
+    p.game.boards[0].cursor.x = 2;
+    p.game.boards[0].cursor.y = 0;
+    p.game.boards[1].setColumns([[0, 0, 3, 0, 0], [1, 2]]);
+    // 一時停止前に CPU が送っていた攻撃を捨てる（着地の振動が混ざらないように）
+    for (const b of p.game.boards) b.pendingGarbage = [];
+  });
+  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__panepon.tick(ins), inputs);
+  await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
+  for (let i = 0; i < 8; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
+  const calls = await page.evaluate(() => (window as any).__vibrations);
+  expect(calls).toEqual([10]);
+
+  // CPU 側で4枚揃っても震えない。その攻撃（幅3の板）が自分の盤面に着地したときに震える
+  await page.evaluate(() => {
+    const p = (window as any).__panepon;
+    (window as any).__vibrations = [];
+    const b = p.game.boards[1];
+    b.cursor.x = 0;
+    b.cursor.y = 2;
+    b.trySwap();
+  });
+  let cpuMatched = false;
+  for (let i = 0; i < 40 && !cpuMatched; i++) {
+    await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
+    cpuMatched = await page.evaluate(() => (window as any).__panepon.game.boards[1].events.some((e: any) => e.type === "match"));
+  }
+  expect(cpuMatched).toBe(true);
+  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([]);
+  for (let i = 0; i < 120; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
+  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([45]);
+
+  // 厚い板ほど長く震える
+  await page.evaluate(() => {
+    const p = (window as any).__panepon;
+    (window as any).__vibrations = [];
+    p.game.boards[0].pendingGarbage.push({ width: 6, height: 2, type: "normal" });
+  });
+  for (let i = 0; i < 200; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
+  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([60]);
+
+  // メニューで OFF にすると保存され、以後は震えない
+  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+  const toggle = await page.evaluate(() => {
+    const scene = (window as any).__panepon.scene.scene.manager.getScene("menu");
+    const t = scene.children.getByName("vibration");
+    t.emit("pointerdown");
+    return { text: t.text, stored: localStorage.getItem("panepon.haptics.v1") };
+  });
+  expect(toggle).toEqual({ text: "VIBRATION: OFF", stored: "off" });
+
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.evaluate(() => {
+    const p = (window as any).__panepon;
+    p.scene.scene.pause();
+    (window as any).__vibrations = [];
+    p.game.boards[0].setColumns([[0], [0], [1], [0], [2], [3]]);
+    p.game.boards[0].cursor.x = 2;
+    p.game.boards[0].cursor.y = 0;
+  });
+  await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
+  for (let i = 0; i < 8; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
+  expect(await page.evaluate(() => (window as any).__panepon.game.boards[0].panelsCleared)).toBe(3);
+  expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([]);
+});

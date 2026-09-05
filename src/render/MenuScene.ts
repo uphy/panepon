@@ -4,6 +4,7 @@ import { createTextures } from "./textures";
 import type { CpuLevel, GameMode } from "../core";
 import { audio } from "./shared";
 import { loadHighScores } from "./highscore";
+import { haptics } from "./haptics";
 
 interface MenuItem {
   label: string;
@@ -110,6 +111,20 @@ export class MenuScene extends Phaser.Scene {
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",
           "Mouse: click between two panels to swap them, or drag a panel sideways. Hold outside the board to raise",
         ];
+    // 振動の切り替え。対応端末（Android など）でだけ出す
+    if (haptics.supported) {
+      const label = (): string => `VIBRATION: ${haptics.enabled ? "ON" : "OFF"}`;
+      const t = this.add
+        .text(cx, H - 78, label(), { fontFamily: FONT, fontSize: "13px", color: "#9a9ab0" })
+        .setOrigin(0.5)
+        .setPadding(12, 6, 12, 6)
+        .setInteractive({ useHandCursor: true })
+        .setName("vibration");
+      t.on("pointerdown", () => {
+        haptics.toggle();
+        t.setText(label());
+      });
+    }
     this.add
       .text(cx, H - 34, help.join("\n"), {
         fontFamily: FONT,
