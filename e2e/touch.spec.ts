@@ -44,7 +44,7 @@ function kinds(page: Page, x1: number, x2: number, y: number): Promise<number[]>
 }
 
 test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤面の外を押してせり上げ", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=7&bgm=0");
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.waitForTimeout(200);
 
@@ -100,11 +100,11 @@ test.describe("スマホ縦画面", () => {
   });
 
   test("縦レイアウトになり、タッチのタップ・ドラッグが効く", async ({ page }) => {
-    await page.goto("/?bgm=0");
+    await page.goto("/?bgm=0&countdown=0");
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOT}/mobile-menu.png` });
 
-    await page.goto("/?mode=endless&seed=7&bgm=0");
+    await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
     await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
     await page.waitForTimeout(300);
     const size = await page.evaluate(() => {
@@ -146,7 +146,7 @@ test.describe("スマホ縦画面", () => {
     const rowsAfter = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
     expect(rowsAfter).toBeGreaterThan(rowsBefore);
 
-    await page.goto("/?mode=versus&seed=7&bgm=0");
+    await page.goto("/?mode=versus&seed=7&bgm=0&countdown=0");
     await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${SHOT}/mobile-versus.png` });

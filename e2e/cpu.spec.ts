@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const SHOT = "e2e/__screenshots__";
 
 test("CPU 対戦: 2P 側を CPU が動かし、放置すると負けて勝敗が記録される", async ({ page }) => {
-  await page.goto("/?mode=cpu&cpu=hard&seed=5&speed=30&bgm=0");
+  await page.goto("/?mode=cpu&cpu=hard&seed=5&speed=30&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.waitForTimeout(300);
   const info = await page.evaluate(() => {
@@ -40,7 +40,7 @@ test("CPU 対戦: 2P 側を CPU が動かし、放置すると負けて勝敗が
 });
 
 test("ハイスコア: エンドレスの結果が保存され、メニューに表示される", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=3&bgm=0");
+  await page.goto("/?mode=endless&seed=3&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.evaluate(() => {
     const b = (window as any).__panepon.game.boards[0];

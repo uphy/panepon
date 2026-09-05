@@ -22,6 +22,8 @@ export class GameScene extends Phaser.Scene {
   private cpuLevel: CpuLevel = "normal";
   private pauseText!: Phaser.GameObjects.Text;
   private ended = false;
+  /** 開始のカウントダウン中か。この間はゲームを進めない。 */
+  starting = false;
   private wasDanger = false;
   /** ゲーム用に履歴を積んでいるか。メニューへ戻るときに1つ戻して消す。 */
   private historyPushed = false;
@@ -155,8 +157,8 @@ export class GameScene extends Phaser.Scene {
 
     audio.start();
     audio.setDanger(false);
-    audio.gameStart();
-    audio.startBgm("game");
+    // メニューの曲はここで止め、カウントダウン中は無音にする。ゲームの曲は START で始める
+    audio.stopBgm();
 
     // e2e とデバッグ用。
     (window as unknown as { __panepon: unknown }).__panepon = {
@@ -164,6 +166,45 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       tick: (inputs: Input[]) => this.stepOnce(inputs),
     };
+
+    if (params.get("countdown") === "0") this.beginPlay();
+    else this.runCountdown();
+  }
+
+  /** 3・2・1・START のカウントダウン。各盤面の中央に出す。START でゲームが動き出し、BGM が始まる。 */
+  private runCountdown(): void {
+    this.starting = true;
+    const texts = this.views.map((v) =>
+      this.add
+        .text(v.center.x, v.center.y, "", { fontFamily: FONT, fontSize: "64px", color: "#ffe066", fontStyle: "bold", stroke: "#1a1a2a", strokeThickness: 8 })
+        .setOrigin(0.5)
+        .setDepth(40),
+    );
+    const show = (label: string, big: boolean): void => {
+      for (const text of texts) text.setText(label).setScale(big ? 1.8 : 1.5).setAlpha(1);
+      this.tweens.add({ targets: texts, scale: 1, duration: 180, ease: "Back.Out" });
+    };
+    const STEP = 700;
+    ["3", "2", "1"].forEach((label, i) => {
+      this.time.delayedCall(i * STEP, () => {
+        show(label, false);
+        audio.count();
+      });
+    });
+    this.time.delayedCall(3 * STEP, () => {
+      show("START", true);
+      this.beginPlay();
+      this.tweens.add({ targets: texts, alpha: 0, delay: 400, duration: 250, onComplete: () => texts.forEach((t) => t.destroy()) });
+    });
+  }
+
+  private beginPlay(): void {
+    this.starting = false;
+    this.touches.forEach((t) => t.clear());
+    this.views.forEach((v) => v.resetTimer());
+    this.accumulator = 0;
+    audio.gameStart();
+    audio.startBgm("game");
   }
 
   private toMenu(): void {
@@ -181,7 +222,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private togglePause(): void {
-    if (this.ended) return;
+    if (this.ended || this.starting) return;
     this.setPaused(!this.paused);
   }
 
@@ -213,7 +254,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(_time: number, delta: number): void {
-    if (!this.paused && !this.ended) {
+    if (!this.paused && !this.ended && !this.starting) {
       this.accumulator += Math.min(delta, 250);
       let steps = 0;
       while (this.accumulator >= STEP_MS && steps < 6) {

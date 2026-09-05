@@ -299,6 +299,12 @@ export class GameAudio {
     this.arp(["c6", "e6", "g6"].map(n), { step: 0.025, dur: 0.07, wave: "pulse12", gain: 0.12, echo: 0.3 });
   }
 
+  /** カウントダウンの 3・2・1。鈴のような短い1音。 */
+  count(): void {
+    this.voice({ wave: "sine", f: n("e6"), dur: 0.14, gain: 0.18, echo: 0.3 });
+    this.voice({ wave: "triangle", f: n("e5"), dur: 0.08, gain: 0.06 });
+  }
+
   /** ゲーム開始。キックと「ピッ、ポーン」。 */
   gameStart(): void {
     this.kick(0);

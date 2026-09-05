@@ -26,6 +26,16 @@ export class BoardView {
   private stopBar: Phaser.GameObjects.Rectangle;
   private startTime = 0;
 
+  /** 経過時間の起点を今にする。カウントダウンが終わって動き出すときに呼ぶ。 */
+  resetTimer(): void {
+    this.startTime = this.scene.time.now;
+  }
+
+  /** 盤面の中心座標。カウントダウンの数字を出す位置に使う。 */
+  get center(): { x: number; y: number } {
+    return { x: this.ox + BOARD_W / 2, y: this.oy + BOARD_H / 2 };
+  }
+
   constructor(
     private readonly scene: Phaser.Scene,
     readonly board: Board,
@@ -74,7 +84,7 @@ export class BoardView {
       .text(0, 24, "", { fontFamily: FONT, fontSize: "13px", color: TEXT_COLOR, align: "center" })
       .setOrigin(0.5);
     this.overlay.add([dim, this.overlayTitle, this.overlayBody]);
-    this.startTime = scene.time.now;
+    this.startTime = Number.POSITIVE_INFINITY; // resetTimer() が呼ばれるまで 00:00
   }
 
   /** 1枚ずつ消える音の通し番号。揃うたびに 0 に戻し、tick をまたいでも音程が上がり続けるようにする。 */
@@ -218,7 +228,7 @@ export class BoardView {
     this.frame.setFillStyle(b.panic && blink ? 0xaa3344 : 0x3a3a4c);
 
     this.scoreText.setText(`${this.label}  ${String(b.score).padStart(6, "0")}`);
-    const elapsed = Math.floor((this.scene.time.now - this.startTime) / 1000);
+    const elapsed = Math.max(0, Math.floor((this.scene.time.now - this.startTime) / 1000));
     const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
     const ss = String(elapsed % 60).padStart(2, "0");
     const parts = [`${mm}:${ss}`];

@@ -10,7 +10,7 @@ async function setHidden(page: import("@playwright/test").Page, hidden: boolean)
 }
 
 test("画面が隠れるとポーズし、BGM が止まる。戻ってタップすると再開する", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=7");
+  await page.goto("/?mode=endless&seed=7&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.waitForTimeout(300);
   const before = await page.evaluate(() => (window as any).__panepon.game.boards[0].frame);
@@ -47,7 +47,7 @@ test("画面が隠れるとポーズし、BGM が止まる。戻ってタップ�
 });
 
 test("window の blur でもポーズする", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=7&bgm=0");
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.waitForTimeout(200);
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("メニューから始めたゲームを Esc で抜けると、メニューが描画されて再度始められる", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/?bgm=0");
+  await page.goto("/?bgm=0&countdown=0");
   await page.waitForTimeout(400);
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
@@ -25,7 +25,7 @@ test("メニューから始めたゲームを Esc で抜けると、メニュー
 });
 
 test("ゲームオーバー後に Esc でメニューへ戻る", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=3&bgm=0");
+  await page.goto("/?mode=endless&seed=3&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.evaluate(() => {
     const b = (window as any).__panepon.game.boards[0];

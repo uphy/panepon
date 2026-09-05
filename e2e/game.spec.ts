@@ -33,7 +33,7 @@ test("メニューが表示され、キーボードでエンドレスを開始�
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
   });
-  await page.goto("/?bgm=0");
+  await page.goto("/?bgm=0&countdown=0");
   await expect(page.locator("canvas")).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${SHOT}/menu.png` });
@@ -45,7 +45,7 @@ test("メニューが表示され、キーボードでエンドレスを開始�
 });
 
 test("エンドレス: カーソル移動と入れ替えが盤面に反映される", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=7&bgm=0");
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await waitForGame(page);
   const before = await boardState(page);
   await page.keyboard.press("ArrowLeft");
@@ -81,7 +81,7 @@ test("エンドレス: カーソル移動と入れ替えが盤面に反映され
 });
 
 test("エンドレス: 3連鎖の盤面を仕込んで得点220点と吹き出しを確認", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=7&bgm=0&speed=1");
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0&speed=1");
   await waitForGame(page);
   // 描画ループを止めて、決定論的に tick を進める
   await page.evaluate(() => {
@@ -125,7 +125,7 @@ test("エンドレス: 3連鎖の盤面を仕込んで得点220点と吹き出�
 });
 
 test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page }) => {
-  await page.goto("/?mode=versus&seed=11&bgm=0");
+  await page.goto("/?mode=versus&seed=11&bgm=0&countdown=0");
   await waitForGame(page);
   const n = await page.evaluate(() => (window as any).__panepon.game.boards.length);
   expect(n).toBe(2);
@@ -165,7 +165,7 @@ test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page 
 });
 
 test("エンドレス: 天井まで積むとゲームオーバーの表示になる", async ({ page }) => {
-  await page.goto("/?mode=endless&seed=3&bgm=0");
+  await page.goto("/?mode=endless&seed=3&bgm=0&countdown=0");
   await waitForGame(page);
   await page.evaluate(() => {
     const p = (window as any).__panepon;
