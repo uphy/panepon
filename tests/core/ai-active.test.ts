@@ -36,15 +36,11 @@ describe("CPU のアクティブ連鎖", () => {
     expect(chains.slice(0, 2)).toEqual([1, 2]);
   });
 
-  it("normal も間に合えば仕込む", () => {
-    const { chains } = playUntilChain("normal", 400);
-    expect(chains[0]).toBe(1);
-    expect(chains).toContain(2);
-  });
-
-  it("easy は先読みしないので仕込まない", () => {
-    const { chains } = playUntilChain("easy", 400);
-    expect(chains[0]).toBe(1);
-    expect(chains).not.toContain(2);
+  it("normal と easy は先読みしないので仕込まない", () => {
+    for (const level of ["normal", "easy"] as const) {
+      const { chains } = playUntilChain(level, 400);
+      expect(chains[0], level).toBe(1);
+      expect(chains, level).not.toContain(2);
+    }
   });
 });

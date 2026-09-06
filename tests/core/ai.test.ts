@@ -134,7 +134,8 @@ describe("CPU が止まらない", () => {
           if (b.events.some((e) => e.type === "swap")) lastSwap = b.frame;
           worst = Math.max(worst, b.frame - lastSwap);
         }
-        expect(worst, `${level} seed=${seed}`).toBeLessThanOrEqual(240);
+        // easy は思考100F・移動16F/マスなので、遠くまでカーソルを運ぶと4秒を少し超える。止まっているわけではない
+        expect(worst, `${level} seed=${seed}`).toBeLessThanOrEqual(level === "easy" ? 300 : 240);
       }
     }
   });

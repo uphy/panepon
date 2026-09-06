@@ -19,10 +19,15 @@ interface CpuParams {
   activeDepth: number;
 }
 
+/**
+ * 難易度ごとの手加減。以前の easy を normal、normal を hard に繰り下げ、easy はさらに遅くした
+ * （以前の normal は開始1秒台で同時消しを送り始め、人が追いつけなかった）。
+ * 以前の hard（思考5F・移動4F・8手読み・アクティブ連鎖4手）は使っていない。
+ */
 export const CPU_PARAMS: Record<CpuLevel, CpuParams> = {
-  easy: { thinkDelay: 50, moveInterval: 10, depth: 2, lookahead: false, raiseBelow: 3, activeDepth: 0 },
-  normal: { thinkDelay: 20, moveInterval: 6, depth: 4, lookahead: true, raiseBelow: 4, activeDepth: 2 },
-  hard: { thinkDelay: 5, moveInterval: 4, depth: 8, lookahead: true, raiseBelow: 6, activeDepth: 4 },
+  easy: { thinkDelay: 100, moveInterval: 16, depth: 1, lookahead: false, raiseBelow: 2, activeDepth: 0 },
+  normal: { thinkDelay: 50, moveInterval: 10, depth: 2, lookahead: false, raiseBelow: 3, activeDepth: 0 },
+  hard: { thinkDelay: 20, moveInterval: 6, depth: 4, lookahead: true, raiseBelow: 4, activeDepth: 2 },
 };
 
 /** 評価用の盤面。柄は 0 以上、空は EMPTY、動けないもの（入れ替え・落下中）は BLOCK、おじゃまは GARBAGE、消去中は CLEARING。 */
