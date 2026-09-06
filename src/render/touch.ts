@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Board, COLS, ROWS, type Input } from "../core";
+import { Board, COLS, ROWS, isEmptyCell, type Input } from "../core";
 import { BOARD_H, BOARD_W, CELL } from "./theme";
 
 /** 横ドラッグを「入れ替え」と判定する移動量（マスの幅に対する割合）。 */
@@ -15,6 +15,8 @@ interface Drag {
   /** ドラッグ中のパネルが今いるマス。入れ替えるたびに追従する。 */
   cellX: number;
   cellY: number;
+  /** 掴んだのがパネルか（空マスを掴んで隣を引き寄せる操作もある）。 */
+  panel: boolean;
   mode: DragMode;
 }
 
@@ -22,7 +24,8 @@ interface Drag {
  * 盤面へのタッチ・マウス操作を Input に変える。
  *
  * - 2枚の境目をタップ: その2枚を入れ替える（1回で入れ替わる）
- * - パネルを横にドラッグ: その方向の隣と入れ替える。指を離さず引き続ければ連続で入れ替わる
+ * - パネルを横にドラッグ: その方向の隣と入れ替える。指を離さず引き続ければ連続で入れ替わる。
+ *   入れ替え先の下が空なら、原作どおりそこで落ちる（ドラッグはそこで終わり、谷を越えては運べない）
  * - 盤面の外を押している間: 手動せり上げ（GameScene が盤面外の指を振り分けて raisePointers に入れる）
  * - 盤面を2本の指で押している間: 手動せり上げ。縦持ちで盤面が画面幅いっぱいのときに、盤面の外を探さなくて済む
  *
@@ -106,7 +109,8 @@ export class TouchInput {
       for (const id of this.onBoard) this.raisePointers.add(id);
       return;
     }
-    this.drags.set(p.id, { startX: p.worldX, startY: p.worldY, cellX: cell.x, cellY: cell.y, mode: "pending" });
+    const panel = !isEmptyCell(this.board.cell(cell.x, cell.y));
+    this.drags.set(p.id, { startX: p.worldX, startY: p.worldY, cellX: cell.x, cellY: cell.y, panel, mode: "pending" });
   }
 
   private onMove(p: Phaser.Input.Pointer): void {
@@ -123,6 +127,8 @@ export class TouchInput {
     d.cellX = target;
     d.startX += dir * this.cell;
     d.mode = "swipe";
+    // 入れ替え先の下が空なら、パネルはそこで落ちる。ドラッグはここで終える
+    if (d.panel && d.cellY > 0 && isEmptyCell(this.board.cell(target, d.cellY - 1))) this.drags.delete(p.id);
   }
 
   private onUp(p: Phaser.Input.Pointer): void {

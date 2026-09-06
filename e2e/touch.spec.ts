@@ -89,6 +89,32 @@ test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤
   expect(released).toBe(false);
 });
 
+test("ドラッグしたパネルは、入れ替え先の下が空ならそこで落ち、谷を越えて運べない", async ({ page }) => {
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForTimeout(200);
+  // 列1が底まで空の谷。(0,1) のパネルを右へ3マスぶんドラッグする
+  await page.evaluate(() => {
+    const b = (window as any).__panepon.game.boards[0];
+    b.setColumns([[0, 1], [], [2, 3], [4, 2], [0], [3]]);
+  });
+  await page.waitForTimeout(100);
+  const from = await cellCenter(page, 0, 1);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 20, from.y, { steps: 4 });
+  await page.mouse.move(from.x + 60, from.y, { steps: 4 });
+  await page.mouse.move(from.x + 100, from.y, { steps: 4 });
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+  const after = await page.evaluate(() => {
+    const b = (window as any).__panepon.game.boards[0];
+    return { landed: b.cell(1, 0).kind, origin: b.cell(0, 1).kind, far: b.cell(2, 1).kind, farther: b.cell(3, 1).kind };
+  });
+  // 谷に落ちて (1,0) に着地。列2・3の行1は元のまま
+  expect(after).toEqual({ landed: 1, origin: -1, far: 3, farther: 2 });
+});
+
 test.describe("スマホ縦画面", () => {
   const pixel = devices["Pixel 7"];
   test.use({
