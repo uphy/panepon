@@ -257,6 +257,13 @@ export function makePulseWave(ctx: AudioContext, duty: number): PeriodicWave {
   return ctx.createPeriodicWave(real, imag);
 }
 
+/** 音を予約しておく先読みの長さ（秒）。 */
+const LOOKAHEAD = 0.12;
+/** 曲を切り替えるとき、前の曲の予約済みの音が終わるまで出力を絞っておく長さ（秒）。LOOKAHEAD より長くする。 */
+const SWITCH_GAP = 0.15;
+/** 危険状態を抜けてからゲーム曲に戻すまでの待ち（ミリ秒）。 */
+export const DANGER_RELEASE_MS = 2500;
+
 export class BgmPlayer {
   private readonly songs: Record<TuneName, Song> = { menu: buildMenuSong(), game: buildGameSong(), danger: buildDangerSong() };
   private song: Song = this.songs.game;
@@ -274,6 +281,8 @@ export class BgmPlayer {
   private readonly waves: Record<string, PeriodicWave>;
   private readonly noiseBuf: AudioBuffer;
   private timer: number | null = null;
+  /** 危険状態を抜けてからゲーム曲に戻すまでの待ち。戻す前に危険状態へ戻れば取り消す。 */
+  private releaseTimer: number | null = null;
   private step = 0;
   private nextTime = 0;
 
@@ -331,26 +340,41 @@ export class BgmPlayer {
   /** 止める。予約済みの音も出力ごと素早く絞り、止めた直後に1音だけ漏れないようにする。 */
   stop(): void {
     this.halt();
+    this.clearRelease();
     this.current = null;
     this.tune_ = null;
   }
 
   /**
    * 危険状態ではゲーム曲をピンチの曲に切り替える。抜けたらゲーム曲を、切り替えた小節の頭から続ける。
+   * 危険状態は天井付近で数秒おきに出入りするので、抜けてすぐには戻さず DANGER_RELEASE_MS 待つ。その間に戻れば何もしない。
+   * 待たずに戻すと、ピンチの曲の冒頭とゲーム曲の同じ小節が交互に何度も鳴る。
    * ゲーム曲以外（メニュー・停止中）は状態だけ覚えておき、次に start("game") したときに反映する。
    */
   setDanger(on: boolean): void {
     this.danger = on;
     if (this.current !== "game") return;
-    if (on && this.tune_ === "game") {
-      this.gameStep = this.step;
-      this.halt();
-      this.play("danger", 0);
-    } else if (!on && this.tune_ === "danger") {
-      this.halt();
-      const beat = this.songs.game.beat;
-      this.play("game", Math.floor(this.gameStep / beat) * beat);
+    if (on) {
+      this.clearRelease();
+      if (this.tune_ === "game") {
+        this.gameStep = this.step;
+        this.halt();
+        this.play("danger", 0);
+      }
+    } else if (this.tune_ === "danger" && this.releaseTimer === null) {
+      this.releaseTimer = window.setTimeout(() => {
+        this.releaseTimer = null;
+        if (this.current !== "game" || this.tune_ !== "danger" || this.danger) return;
+        this.halt();
+        const beat = this.songs.game.beat;
+        this.play("game", Math.floor(this.gameStep / beat) * beat);
+      }, DANGER_RELEASE_MS);
     }
+  }
+
+  private clearRelease(): void {
+    if (this.releaseTimer !== null) window.clearTimeout(this.releaseTimer);
+    this.releaseTimer = null;
   }
 
   /** スケジューラを止めて出力を絞る。曲の指定は変えない。 */
@@ -362,16 +386,21 @@ export class BgmPlayer {
     this.out.gain.setTargetAtTime(0, now, 0.01);
   }
 
-  /** 曲を step の位置から鳴らし始める。 */
+  /**
+   * 曲を step の位置から鳴らし始める。
+   * 直前の曲は LOOKAHEAD ぶん先まで音を予約しているので、出力を絞ったまま SWITCH_GAP 待ってから開ける。
+   * すぐ開けると前の曲の予約済みの音が新しい曲に重なる。
+   */
   private play(tune: TuneName, step: number): void {
     const now = this.ctx.currentTime;
     this.out.gain.cancelScheduledValues(now);
-    this.out.gain.setValueAtTime(1, now);
+    this.out.gain.setValueAtTime(0, now);
+    this.out.gain.setValueAtTime(1, now + SWITCH_GAP - 0.01);
     this.tune_ = tune;
     this.song = this.songs[tune];
     this.feedback.gain.value = this.song.echoFeedback;
     this.step = step;
-    this.nextTime = now + 0.08;
+    this.nextTime = now + SWITCH_GAP;
     this.tick();
   }
 
@@ -380,7 +409,7 @@ export class BgmPlayer {
     const song = this.song;
     const stepDur = 60 / song.tempo / 4;
     this.delay.delayTime.setTargetAtTime(stepDur * song.echoSteps, ctx.currentTime, 0.05);
-    while (this.nextTime < ctx.currentTime + 0.12) {
+    while (this.nextTime < ctx.currentTime + LOOKAHEAD) {
       const t = this.nextTime;
       for (const tr of song.tracks) {
         const ev = tr.events.get(this.step % tr.total);

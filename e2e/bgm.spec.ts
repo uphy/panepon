@@ -33,13 +33,40 @@ test("危険状態ではピンチの曲に切り替わり、抜けるとゲー�
   const danger = await bgmState(page);
   expect(danger).toEqual({ playing: "game", tune: "danger", danger: true });
 
-  // 低くしてピンチを抜けると、ゲーム曲に戻る
+  // 低くしてピンチを抜けても、すぐには戻らない（数秒おきに出入りしても曲が行き来しないように）
   await page.evaluate(() => {
     const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1, 2], [1], [2], [3], [4], [0]]);
   });
   await page.waitForTimeout(300);
+  expect(await bgmState(page)).toEqual({ playing: "game", tune: "danger", danger: false });
+  // 抜けたまま待つとゲーム曲に戻る
+  await page.waitForFunction(() => (window as any).__swapriseAudio.bgm?.tune === "game", null, { timeout: 5000 });
   expect(await bgmState(page)).toEqual({ playing: "game", tune: "game", danger: false });
+
+  // 抜けてすぐ戻ると、ピンチの曲のまま
+  await page.evaluate(() => {
+    const b = (window as any).__swaprise.game.boards[0];
+    b.setColumns([[0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0], [1], [2], [3], [4], [0]]);
+  });
+  await page.waitForTimeout(300);
+  expect((await bgmState(page)).tune).toBe("danger");
+  await page.evaluate(() => {
+    const b = (window as any).__swaprise.game.boards[0];
+    b.setColumns([[0, 1, 2], [1], [2], [3], [4], [0]]);
+  });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const b = (window as any).__swaprise.game.boards[0];
+    b.setColumns([[0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0], [1], [2], [3], [4], [0]]);
+  });
+  await page.waitForTimeout(3000);
+  expect(await bgmState(page)).toEqual({ playing: "game", tune: "danger", danger: true });
+  await page.evaluate(() => {
+    const b = (window as any).__swaprise.game.boards[0];
+    b.setColumns([[0, 1, 2], [1], [2], [3], [4], [0]]);
+  });
+  await page.waitForFunction(() => (window as any).__swapriseAudio.bgm?.tune === "game", null, { timeout: 5000 });
 
   // 天井まで積んで終わらせる
   await page.evaluate(() => {
