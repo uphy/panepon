@@ -1,11 +1,12 @@
 import Phaser from "phaser";
-import { FONT, KIND_COLORS, TEXT_COLOR, layoutFor } from "./theme";
+import { FONT, KIND_COLORS, TEXT_COLOR, layoutFor, sameLayout } from "./theme";
 import { createTextures } from "./textures";
 import type { CpuLevel, GameMode } from "../core";
 import { audio } from "./shared";
 import { loadHighScores } from "./highscore";
 import { haptics } from "./haptics";
 import { DPR, applyLayout } from "./hidpi";
+import { Button } from "./ui";
 
 interface MenuItem {
   label: string;
@@ -71,12 +72,13 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const itemTop = titleY + 134;
-    const itemGap = layout.portrait ? 44 : 36;
+    const itemGap = layout.portrait ? 48 : 36;
     ITEMS.forEach((item, i) => {
+      // 指で押す前提で、文字の上下に余白を取って当たり判定を高さ 40 論理px 以上にする
       const t = this.add
         .text(cx, itemTop + i * itemGap, item.label, { fontFamily: FONT, fontSize: "22px", color: TEXT_COLOR })
         .setOrigin(0.5)
-        .setPadding(16, 4, 16, 4)
+        .setPadding(16, layout.portrait ? 8 : 4, 16, layout.portrait ? 8 : 4)
         .setInteractive({ useHandCursor: true });
       t.on("pointerover", () => {
         this.index = i;
@@ -106,26 +108,43 @@ export class MenuScene extends Phaser.Scene {
       .setName("records");
 
     const help = layout.touch
-      ? ["Tap between two panels to swap them", "Drag a panel sideways to swap", "Hold outside the board to raise"]
+      ? ["Tap between two panels to swap them", "Drag a panel sideways to swap", "Hold outside the board to raise", "Pause with the ❚❚ button"]
       : [
           "P1: ←↑↓→ move   Z swap   X raise        P2: WASD move   F swap   H raise",
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",
           "Mouse: click between two panels to swap them, or drag a panel sideways. Hold outside the board to raise",
         ];
-    // 振動の切り替え。対応端末（Android など）でだけ出す
+    // 音と振動の切り替え。振動は対応端末（Android など）でだけ出す
+    const soundLabel = (): string => `SOUND: ${audio.muted ? "OFF" : "ON"}`;
+    const soundBtn = new Button(
+      this,
+      0,
+      0,
+      soundLabel(),
+      () => {
+        audio.setMuted(!audio.muted);
+        soundBtn.setText(soundLabel());
+      },
+      { fontSize: 12, minWidth: 110, minHeight: 36 },
+    ).setName("sound");
+    const toggles: Button[] = [soundBtn];
     if (haptics.supported) {
       const label = (): string => `VIBRATION: ${haptics.enabled ? "ON" : "OFF"}`;
-      const t = this.add
-        .text(cx, H - 78, label(), { fontFamily: FONT, fontSize: "13px", color: "#9a9ab0" })
-        .setOrigin(0.5)
-        .setPadding(12, 6, 12, 6)
-        .setInteractive({ useHandCursor: true })
-        .setName("vibration");
-      t.on("pointerdown", () => {
-        haptics.toggle();
-        t.setText(label());
-      });
+      const t = new Button(
+        this,
+        0,
+        0,
+        label(),
+        () => {
+          haptics.toggle();
+          t.setText(label());
+        },
+        { fontSize: 12, minWidth: 110, minHeight: 36 },
+      ).setName("vibration");
+      toggles.push(t);
     }
+    const toggleY = H - (layout.touch ? 96 : 92);
+    toggles.forEach((b, i) => b.setPosition(cx + (i - (toggles.length - 1) / 2) * 132, toggleY));
     this.add
       .text(cx, H - 34, help.join("\n"), {
         fontFamily: FONT,
@@ -135,6 +154,21 @@ export class MenuScene extends Phaser.Scene {
         wordWrap: { width: W - 20 },
       })
       .setOrigin(0.5);
+
+    // 回転・ウィンドウサイズの変更でレイアウトが変わったら、メニューは作り直す
+    let resizeTimer: number | null = null;
+    const onResize = (): void => {
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        if (!sameLayout(layoutFor("menu"), layout)) this.scene.restart();
+      }, 150);
+    };
+    window.addEventListener("resize", onResize);
+    this.events.once("shutdown", () => {
+      window.removeEventListener("resize", onResize);
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+    });
 
     const kb = this.input.keyboard!;
     // AudioContext は最初の操作のあとにしか動かないので、どの入力でも start() を呼ぶ。BGM は start() 時に鳴り始める

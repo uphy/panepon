@@ -17,8 +17,12 @@ export interface Layout {
   width: number;
   height: number;
   portrait: boolean;
-  /** タッチ操作用のせり上げボタンを出すか。 */
+  /** タッチ主体の端末か。案内文とボタンの出し分けに使う。 */
   touch: boolean;
+}
+
+export function sameLayout(a: Layout, b: Layout): boolean {
+  return a.width === b.width && a.height === b.height && a.portrait === b.portrait && a.touch === b.touch;
 }
 
 /** タッチ主体の端末か。マウスがあっても touch イベントがあれば true。 */
@@ -35,9 +39,12 @@ export function layoutFor(mode: "menu" | "endless" | "versus" | "cpu"): Layout {
   const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
   const touch = isTouchDevice();
   if (portrait) {
-    // 対戦は2盤面を並べる。Android の戻るジェスチャ（画面端からの横スワイプ）を盤面のドラッグが踏まないよう、
-    // 左右に 33 論理px（実画面で約 29dp）の余白を取る。
-    if (mode === "versus" || mode === "cpu") return { width: 470, height: 640, portrait, touch };
+    // Android の戻るジェスチャ（画面端からの横スワイプ）を盤面のドラッグが踏まないよう、
+    // 盤面の左右には実画面で 24dp 以上の余白を取る（論理 px は幅 412dp の端末で換算）。
+    // 2P 対戦は同じ大きさの2盤面を並べる（左右 33 論理px = 約 29dp）。
+    if (mode === "versus") return { width: 470, height: 640, portrait, touch };
+    // CPU 対戦は自分の盤面を 1P エンドレスと同じ大きさで描き、CPU の盤面は半分の大きさで右に添える（左右 20 論理px = 約 24dp）。
+    if (mode === "cpu") return { width: 340, height: 600, portrait, touch };
     return { width: 300, height: 600, portrait, touch };
   }
   return { width: 800, height: 520, portrait, touch };

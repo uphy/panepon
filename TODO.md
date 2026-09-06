@@ -7,18 +7,15 @@
 
 - [x] 描画解像度をスマホに合わせる
   - 対応: `src/render/hidpi.ts`。canvas を論理サイズ × DPR で作り、カメラ zoom を DPR にして論理座標を保つ。テクスチャは DPR 倍で生成して Image を 1/DPR に縮め、`scene.add.text` の resolution を既定で DPR にした。入力は Pointer の worldX / worldY を使う
-- [ ] 回転・リサイズに追従する
-  - `layoutFor` はシーン生成時に1回だけ評価する。ゲーム中に横向きにすると縦持ちレイアウトのまま黒帯になる
-  - window の resize / orientationchange でレイアウトを再計算し、盤面と UI を置き直す。ゲームの進行は保つ
-- [ ] 画面上の操作ボタンを置く
-  - ポーズ・ミュート・やり直しはキーボードと戻るジェスチャでしか出せない。iOS には戻るジェスチャ相当がなく、ポーズ手段が「アプリを隠す」だけになる
-  - 画面に PAUSE ボタンを置き、ポーズ画面に RESUME / RESTART / MENU / SOUND / VIBRATION をまとめる
-- [ ] タップ対象を指の大きさにする
-  - 画面下の「tap here: menu」は 12px の Text で padding なし。実画面で高さ約 16px しかない
-  - 縦持ちの CPU 対戦は自分の盤面を大きく、CPU の盤面を小さく描く非対称レイアウトにして、自分のマスをエンドレスと同じ大きさにする
-- [ ] セーフエリアを避ける
-  - `viewport-fit=cover` で全画面にしているが `env(safe-area-inset-*)` を使っていない。iPhone ではホームインジケータの上に UI が重なる
-  - canvas の親要素に safe-area の padding を入れ、Phaser の FIT はその内側に収める
+- [x] 回転・リサイズに追従する
+  - 対応: BoardView を原点付きの Container にして `place(ox, oy, scale)` で動かせるようにし、GameScene の `place()` が全 UI を置く。window の resize を 150ms 待ってから `layoutFor` を再評価し、変わっていれば置き直す。メニューは作り直す
+  - 残り: 横持ちのスマホは 800×520 のデスクトップ用レイアウトを縮小して出すので小さい。横持ち専用のレイアウトは未対応
+- [x] 画面上の操作ボタンを置く
+  - 対応: `src/render/ui.ts` の Button（背景つき・pointerdown を止める）。盤面右上に ❚❚、ポーズ画面に RESUME / RESTART / SOUND / VIBRATION / MENU、終了後の盤面に RETRY / MENU。ミュートは localStorage に保存
+- [x] タップ対象を指の大きさにする
+  - 対応: 「tap here: menu」は廃止（ポーズ画面の MENU へ）。縦持ちの CPU 対戦は自分の盤面が等倍、CPU の盤面が 0.5 倍の非対称レイアウト（幅 340）。メニュー項目の padding を増やし、SOUND / VIBRATION を Button にした
+- [x] セーフエリアを避ける
+  - 対応: `#app` に `env(safe-area-inset-*)` の padding、内側の `#game` を Phaser の親にした。中央寄せは Phaser の autoCenter だけに任せる（CSS でも寄せると二重にずれる）。Playwright は safe-area を再現できないので実機で確認が必要
 
 ## 2. 次点（スマホ運用として欲しい）
 
@@ -29,12 +26,12 @@
 - [ ] せり上げの操作をもう1つ用意する
   - 今は「盤面の外を押し続ける」だけ。縦持ちのエンドレスは盤面が画面幅いっぱいなので、押せる場所が上下の余白に限られる
   - 候補は専用の RAISE ボタン、盤面の2本指押し、上フリック。パネルドラッグと衝突しにくいのはボタンか2本指
-- [ ] 結果画面と案内文をタッチ向けの言葉にする
-  - 「R / tap: restart   Esc: menu」「tap / P to resume」をタッチ端末ではボタンに置き換える
-- [ ] 音の ON/OFF を画面に出す
-  - BGM と効果音の切り替えを VIBRATION と同じ並びに置く。iOS のサイレントスイッチで WebAudio が全部消える旨を README に書く
-- [ ] iOS の長押し対策
-  - `-webkit-touch-callout: none` を入れる。canvas 長押しで拡大鏡やメニューが出る端末がある
+- [x] 結果画面と案内文をタッチ向けの言葉にする
+  - 対応: 結果画面の「R / tap: restart   Esc: menu」を RETRY / MENU ボタンに、「tap / P to resume」をポーズ画面のボタンに置き換えた。キー操作の案内はタッチ端末では出さない
+- [x] 音の ON/OFF を画面に出す
+  - 対応: メニューとポーズ画面に SOUND ボタン。iOS のサイレントスイッチの件は README に書く（次の項目でまとめて）
+- [x] iOS の長押し対策
+  - 対応: `-webkit-touch-callout: none` を body に追加
 - [ ] 画面のスリープ防止
   - Screen Wake Lock API を取り、`visibilitychange` で再取得する。Android Chrome と iOS 16.4 以降で動く
 

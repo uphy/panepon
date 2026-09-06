@@ -11,9 +11,12 @@ const DRAW_ROWS = Math.min(TOTAL_ROWS, ROWS + 6);
 /**
  * 1つの Board を描く。Board の状態を毎フレーム読んで Image の位置・テクスチャを更新するだけで、
  * 自前の状態はエフェクト（吹き出し・揺れ）しか持たない。
+ *
+ * 表示物はすべて root の Container に入れ、盤面の左上を (0, 0) とする局所座標で置く。
+ * 画面上の位置と大きさは place() で root を動かして決める。回転や非対称レイアウト（CPU の盤面を小さく描く）はこれで賄う。
  */
 export class BoardView {
-  private readonly container: Phaser.GameObjects.Container;
+  private readonly root: Phaser.GameObjects.Container;
   private readonly cells: Phaser.GameObjects.Image[][] = [];
   private readonly nextCells: Phaser.GameObjects.Image[] = [];
   private readonly cursor: Phaser.GameObjects.Image;
@@ -27,57 +30,66 @@ export class BoardView {
   private readonly overlayBody: Phaser.GameObjects.Text;
   private stopBar: Phaser.GameObjects.Rectangle;
   private startTime = 0;
+  /** 盤面の左上の画面座標（論理 px）と拡大率。place() で更新する。 */
+  ox = 0;
+  oy = 0;
+  scale = 1;
 
   /** 経過時間の起点を今にする。カウントダウンが終わって動き出すときに呼ぶ。 */
   resetTimer(): void {
     this.startTime = this.scene.time.now;
   }
 
-  /** 盤面の中心座標。カウントダウンの数字を出す位置に使う。 */
+  /** 盤面の中心の画面座標。カウントダウンの数字を出す位置に使う。 */
   get center(): { x: number; y: number } {
-    return { x: this.ox + BOARD_W / 2, y: this.oy + BOARD_H / 2 };
+    return { x: this.ox + (BOARD_W / 2) * this.scale, y: this.oy + (BOARD_H / 2) * this.scale };
+  }
+
+  /** 画面上の位置と大きさを決める。生成直後とレイアウト変更時に呼ぶ。 */
+  place(ox: number, oy: number, scale = 1): void {
+    this.ox = ox;
+    this.oy = oy;
+    this.scale = scale;
+    this.root.setPosition(ox, oy).setScale(scale);
   }
 
   constructor(
     private readonly scene: Phaser.Scene,
     readonly board: Board,
-    private readonly ox: number,
-    private readonly oy: number,
     private readonly label: string,
     private readonly showLevel: boolean,
   ) {
-    this.frame = scene.add.rectangle(ox - 4, oy - 4, BOARD_W + 8, BOARD_H + 8, 0x3a3a4c).setOrigin(0);
-    this.bg = scene.add.rectangle(ox, oy, BOARD_W, BOARD_H, BOARD_BG).setOrigin(0);
-
-    this.container = scene.add.container(0, 0);
+    this.root = scene.add.container(0, 0);
+    this.frame = scene.add.rectangle(-4, -4, BOARD_W + 8, BOARD_H + 8, 0x3a3a4c).setOrigin(0);
+    this.bg = scene.add.rectangle(0, 0, BOARD_W, BOARD_H, BOARD_BG).setOrigin(0);
+    this.root.add([this.frame, this.bg]);
 
     for (let r = 0; r < DRAW_ROWS; r++) {
       const row: Phaser.GameObjects.Image[] = [];
       for (let c = 0; c < COLS; c++) {
         const img = scene.add.image(0, 0, "panel-0").setOrigin(0).setScale(1 / DPR).setVisible(false);
-        this.container.add(img);
+        this.root.add(img);
         row.push(img);
       }
       this.cells.push(row);
     }
     for (let c = 0; c < COLS; c++) {
       const img = scene.add.image(0, 0, "panel-0-dark").setOrigin(0).setScale(1 / DPR);
-      this.container.add(img);
+      this.root.add(img);
       this.nextCells.push(img);
     }
     this.cursor = scene.add.image(0, 0, "cursor").setOrigin(0).setScale(1 / DPR);
-    this.container.add(this.cursor);
+    this.root.add(this.cursor);
 
-    this.scoreText = scene.add
-      .text(ox, oy - 30, "", { fontFamily: FONT, fontSize: "18px", color: TEXT_COLOR })
-      .setOrigin(0, 0);
+    this.scoreText = scene.add.text(0, -30, "", { fontFamily: FONT, fontSize: "18px", color: TEXT_COLOR }).setOrigin(0, 0);
     this.infoText = scene.add
-      .text(ox + BOARD_W, oy + BOARD_H + 14, "", { fontFamily: FONT, fontSize: "13px", color: "#9a9ab0", align: "right" })
+      .text(BOARD_W, BOARD_H + 14, "", { fontFamily: FONT, fontSize: "13px", color: "#9a9ab0", align: "right" })
       .setOrigin(1, 0);
     this.pendingGfx = scene.add.graphics();
-    this.stopBar = scene.add.rectangle(ox, oy + BOARD_H + 6, 0, 4, 0x66ccff).setOrigin(0);
+    this.stopBar = scene.add.rectangle(0, BOARD_H + 6, 0, 4, 0x66ccff).setOrigin(0);
+    this.root.add([this.scoreText, this.infoText, this.pendingGfx, this.stopBar]);
 
-    this.overlay = scene.add.container(ox + BOARD_W / 2, oy + BOARD_H / 2).setVisible(false);
+    this.overlay = scene.add.container(BOARD_W / 2, BOARD_H / 2).setVisible(false);
     const dim = scene.add.rectangle(0, 0, BOARD_W, BOARD_H, 0x000000, 0.6);
     this.overlayTitle = scene.add
       .text(0, -30, "", { fontFamily: FONT, fontSize: "30px", color: "#ffe066", fontStyle: "bold" })
@@ -86,7 +98,13 @@ export class BoardView {
       .text(0, 24, "", { fontFamily: FONT, fontSize: "13px", color: TEXT_COLOR, align: "center" })
       .setOrigin(0.5);
     this.overlay.add([dim, this.overlayTitle, this.overlayBody]);
+    this.root.add(this.overlay);
     this.startTime = Number.POSITIVE_INFINITY; // resetTimer() が呼ばれるまで 00:00
+  }
+
+  /** 結果画面などのボタンを盤面の上に置く。局所座標（盤面の左上が原点）で渡す。 */
+  addToOverlay(obj: Phaser.GameObjects.GameObject): void {
+    this.overlay.add(obj);
   }
 
   /** 1枚ずつ消える音の通し番号。揃うたびに 0 に戻し、tick をまたいでも音程が上がり続けるようにする。 */
@@ -148,8 +166,8 @@ export class BoardView {
 
   /** 「4」「x2」の吹き出し。同時消しは赤枠、連鎖は緑枠。 */
   private popup(x: number, y: number, panels: number, chain: number): void {
-    const px = this.ox + x * CELL + CELL / 2;
-    const py = this.oy + (ROWS - 1 - y) * CELL;
+    const px = x * CELL + CELL / 2;
+    const py = (ROWS - 1 - y) * CELL;
     const items: { text: string; color: string }[] = [];
     if (panels >= 4) items.push({ text: String(panels), color: "#ff5c6c" });
     if (chain >= 2) items.push({ text: chain >= 14 ? "x?" : `x${chain}`, color: "#6cff7a" });
@@ -163,8 +181,8 @@ export class BoardView {
           backgroundColor: it.color,
           padding: { x: 5, y: 1 },
         })
-        .setOrigin(0.5)
-        .setDepth(10);
+        .setOrigin(0.5);
+      this.root.add(t);
       this.scene.tweens.add({
         targets: t,
         y: t.y - 28,
@@ -214,22 +232,19 @@ export class BoardView {
         }
         img.setTexture(key);
         img.setAlpha(key === "white" ? 0.5 : 1);
-        const py = this.oy + (ROWS - 1 - r) * CELL - rise + dy + shake;
-        img.setPosition(this.ox + c * CELL + dx, py);
+        const py = (ROWS - 1 - r) * CELL - rise + dy + shake;
+        img.setPosition(c * CELL + dx, py);
         img.setVisible(visible && this.clip(img, py));
       }
     }
     for (let c = 0; c < COLS; c++) {
       const img = this.nextCells[c];
       img.setTexture(`panel-${b.nextRow[c]}-dark`);
-      const py = this.oy + ROWS * CELL - rise + shake;
-      img.setPosition(this.ox + c * CELL, py);
+      const py = ROWS * CELL - rise + shake;
+      img.setPosition(c * CELL, py);
       img.setVisible(this.clip(img, py));
     }
-    this.cursor.setPosition(
-      this.ox + b.cursor.x * CELL - 3,
-      this.oy + (ROWS - 1 - b.cursor.y) * CELL - rise - 3 + shake,
-    );
+    this.cursor.setPosition(b.cursor.x * CELL - 3, (ROWS - 1 - b.cursor.y) * CELL - rise - 3 + shake);
     this.cursor.setVisible(!b.gameOver);
 
     this.bg.setFillStyle(b.panic ? 0x3a1e26 : b.danger ? 0x2c1e2a : BOARD_BG);
@@ -249,20 +264,20 @@ export class BoardView {
     this.stopBar.setVisible(stopW > 0);
 
     this.pendingGfx.clear();
-    let px = this.ox;
+    let px = 0;
     for (const spec of b.pendingGarbage) {
       const w = spec.width * 5;
       const h = Math.max(4, spec.height * 4);
       this.pendingGfx.fillStyle(spec.type === "shock" ? 0x5c5c66 : 0x8a8a96, 1);
-      this.pendingGfx.fillRect(px, this.oy - 12 - h, w, h);
+      this.pendingGfx.fillRect(px, -12 - h, w, h);
       px += w + 4;
     }
   }
 
-  /** 盤面の枠からはみ出す部分を切り取る。完全に外なら false。 */
+  /** 盤面の枠からはみ出す部分を切り取る。完全に外なら false。py は局所座標。 */
   private clip(img: Phaser.GameObjects.Image, py: number): boolean {
-    const top = Math.max(0, this.oy - py);
-    const bottom = Math.max(0, py + CELL - (this.oy + BOARD_H));
+    const top = Math.max(0, -py);
+    const bottom = Math.max(0, py + CELL - BOARD_H);
     if (top >= CELL || bottom >= CELL) return false;
     // setCrop はテクスチャのピクセル単位なので DPR 倍で指定する
     img.setCrop(0, top * DPR, CELL * DPR, (CELL - top - bottom) * DPR);
@@ -271,7 +286,6 @@ export class BoardView {
 
   showOverlay(title: string, body: string): void {
     this.overlay.setVisible(true);
-    this.overlay.setDepth(20);
     this.overlayTitle.setText(title);
     this.overlayBody.setText(body);
   }

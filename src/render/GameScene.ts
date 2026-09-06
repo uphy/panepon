@@ -7,22 +7,33 @@ import { audio } from "./shared";
 import { haptics } from "./haptics";
 import { TouchInput } from "./touch";
 import { applyLayout } from "./hidpi";
-import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, layoutFor } from "./theme";
+import { Button } from "./ui";
+import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, type Layout, layoutFor, sameLayout } from "./theme";
 
 const STEP_MS = 1000 / 60;
+/** 縦持ちの CPU 対戦で、CPU の盤面を描く大きさ。 */
+const CPU_BOARD_SCALE = 0.5;
 
 export class GameScene extends Phaser.Scene {
   private game_!: Game;
-  private views: BoardView[] = [];
+  views: BoardView[] = [];
   private inputs: PlayerInput[] = [];
-  private touches: TouchInput[] = [];
+  touches: TouchInput[] = [];
   private raiseHints: Phaser.GameObjects.Text[] = [];
   private accumulator = 0;
   /** 一時停止中か。P キー、または画面が隠れたときに true になる。 */
   paused = false;
   private mode: GameMode = "endless";
   private cpuLevel: CpuLevel = "normal";
-  private pauseText!: Phaser.GameObjects.Text;
+  layout!: Layout;
+  private vsText: Phaser.GameObjects.Text | null = null;
+  private pauseButton!: Button;
+  /** ポーズ画面。暗幕・見出し・ボタンをまとめた Container。 */
+  pauseMenu!: Phaser.GameObjects.Container;
+  private pauseDim!: Phaser.GameObjects.Rectangle;
+  private pauseTitle!: Phaser.GameObjects.Text;
+  private pauseButtons: Button[] = [];
+  private hintText!: Phaser.GameObjects.Text;
   private ended = false;
   /** 開始のカウントダウン中か。この間はゲームを進めない。 */
   starting = false;
@@ -50,39 +61,29 @@ export class GameScene extends Phaser.Scene {
     this.inputs = [];
     this.touches.forEach((t) => t.destroy());
     this.touches = [];
+    this.pauseButtons = [];
 
-    const layout = layoutFor(this.mode);
-    applyLayout(this, layout);
-    const W = layout.width;
-    const H = layout.height;
+    this.layout = layoutFor(this.mode);
+    applyLayout(this, this.layout);
 
     const boards = this.game_.boards;
-    const top = layout.portrait ? 44 : 70;
-    const origins: number[] = [];
     if (boards.length === 1) {
-      const ox = Math.floor((W - BOARD_W) / 2);
-      origins.push(ox);
-      this.views.push(new BoardView(this, boards[0], ox, top, "1P", true));
+      this.views.push(new BoardView(this, boards[0], "1P", true));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
+      this.vsText = null;
     } else {
-      const gap = layout.portrait ? 20 : 120;
-      const ox1 = Math.floor(W / 2 - gap / 2 - BOARD_W);
-      const ox2 = Math.floor(W / 2 + gap / 2);
-      origins.push(ox1, ox2);
       const isCpu = this.mode === "cpu";
-      this.views.push(new BoardView(this, boards[0], ox1, top, "1P", false));
-      this.views.push(new BoardView(this, boards[1], ox2, top, isCpu ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P", false));
+      this.views.push(new BoardView(this, boards[0], "1P", false));
+      this.views.push(new BoardView(this, boards[1], isCpu ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P", false));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
       if (!isCpu) this.inputs.push(new PlayerInput(this, P2_KEYS, 1));
-      this.add
-        .text(W / 2, top + BOARD_H / 2, "VS", { fontFamily: FONT, fontSize: layout.portrait ? "18px" : "28px", color: "#9a9ab0" })
-        .setOrigin(0.5);
+      this.vsText = this.add.text(0, 0, "VS", { fontFamily: FONT, fontSize: "28px", color: "#9a9ab0" }).setOrigin(0.5);
     }
 
     // タッチ・マウス操作。タップ・横ドラッグで入れ替え。どの端末でも受け付ける。CPU の盤面は触れない。
     boards.forEach((b, i) => {
       if (!this.inputs[i]) return;
-      const t = new TouchInput(this, b, origins[i], top);
+      const t = new TouchInput(this, b);
       this.touches.push(t);
       this.inputs[i].touch = t;
     });
@@ -90,29 +91,52 @@ export class GameScene extends Phaser.Scene {
     // 盤面の下に薄い矢印を出し、押している間だけ明るくする。
     this.raiseHints = boards.map((_, i) =>
       this.add
-        .text(origins[i] + BOARD_W / 2, top + BOARD_H + (layout.portrait ? 44 : 34), "▲ ▲ ▲", {
-          fontFamily: FONT,
-          fontSize: "16px",
-          color: "#3a3a4c",
-        })
+        .text(0, 0, "▲ ▲ ▲", { fontFamily: FONT, fontSize: "16px", color: "#3a3a4c" })
         .setOrigin(0.5)
         .setVisible(Boolean(this.inputs[i])),
     );
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
       if (this.touches.some((t) => t.cellAt(p.worldX, p.worldY))) return;
-      if (p.worldY > H - 22) return; // 画面下端のメニュー用テキスト
+      if (this.hintText.visible && p.worldY > this.layout.height - 22) return; // 画面下端のキー操作の案内
       let nearest = 0;
-      if (this.touches.length === 2) nearest = p.worldX < W / 2 ? 0 : 1;
+      if (this.touches.length === 2) nearest = p.worldX < this.layout.width / 2 ? 0 : 1;
       this.touches[nearest]?.raisePointers.add(p.id);
     });
 
-    this.pauseText = this.add
-      .text(W / 2, H / 2, "PAUSE\n\ntap / P to resume", { fontFamily: FONT, fontSize: "28px", color: TEXT_COLOR, align: "center" })
-      .setOrigin(0.5)
-      .setDepth(30)
-      .setVisible(false);
-    // ポーズ中のタップ・クリックは再開だけに使う（入れ替えにはしない）
+    // 画面上のポーズボタン。ボタンは pointerdown を止めるので、せり上げにはならない
+    this.pauseButton = new Button(this, 0, 0, "❚❚", () => this.togglePause(), { minWidth: 44, minHeight: 30, fontSize: 13 }).setDepth(5);
+
+    // ポーズ画面。暗幕をタップしても再開する。ボタンで やり直し・音・振動・メニュー
+    this.pauseDim = this.add.rectangle(0, 0, 10, 10, 0x000000, 0.7).setOrigin(0);
+    this.pauseTitle = this.add.text(0, 0, "PAUSE", { fontFamily: FONT, fontSize: "32px", color: TEXT_COLOR, fontStyle: "bold" }).setOrigin(0.5);
+    const soundLabel = (): string => `SOUND: ${audio.muted ? "OFF" : "ON"}`;
+    const vibLabel = (): string => `VIBRATION: ${haptics.enabled ? "ON" : "OFF"}`;
+    this.pauseButtons.push(new Button(this, 0, 0, "RESUME", () => this.setPaused(false), { minWidth: 180, minHeight: 40 }));
+    this.pauseButtons.push(new Button(this, 0, 0, "RESTART", () => this.restart(), { minWidth: 180, minHeight: 40 }));
+    const toggleSound = (): void => {
+      audio.setMuted(!audio.muted);
+      soundBtn.setText(soundLabel());
+    };
+    const soundBtn = new Button(this, 0, 0, soundLabel(), toggleSound, { minWidth: 180, minHeight: 40 });
+    this.pauseButtons.push(soundBtn);
+    if (haptics.supported) {
+      const vibBtn = new Button(
+        this,
+        0,
+        0,
+        vibLabel(),
+        () => {
+          haptics.toggle();
+          vibBtn.setText(vibLabel());
+        },
+        { minWidth: 180, minHeight: 40 },
+      );
+      this.pauseButtons.push(vibBtn);
+    }
+    this.pauseButtons.push(new Button(this, 0, 0, "MENU", () => this.toMenu(), { minWidth: 180, minHeight: 40 }));
+    this.pauseMenu = this.add.container(0, 0, [this.pauseDim, this.pauseTitle, ...this.pauseButtons]).setDepth(30).setVisible(false);
+    // ポーズ中の暗幕タップは再開だけに使う（入れ替えにはしない）
     this.input.on("pointerdown", () => {
       if (this.paused && !this.ended) this.setPaused(false);
     });
@@ -135,29 +159,38 @@ export class GameScene extends Phaser.Scene {
       this.setPaused(true);
     };
     window.addEventListener("popstate", onPop);
+    // 回転・ウィンドウサイズの変更。連続して来るので少し待ってからレイアウトし直す
+    let resizeTimer: number | null = null;
+    const onResize = (): void => {
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        this.relayout();
+      }, 150);
+    };
+    window.addEventListener("resize", onResize);
     this.events.once("shutdown", () => {
       this.game.events.off("hidden", onHidden);
       this.game.events.off("blur", onHidden);
       window.removeEventListener("popstate", onPop);
+      window.removeEventListener("resize", onResize);
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
     });
-    this.add
-      .text(W / 2, H - 14, layout.touch ? "tap here: menu" : "P: pause   R: restart   Esc: menu   M: mute", {
-        fontFamily: FONT,
-        fontSize: "12px",
-        color: "#6a6a80",
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => this.toMenu());
+    // キーボード向けの案内。タッチ端末では出さない（ボタンがある）
+    this.hintText = this.add
+      .text(0, 0, "P: pause   R: restart   Esc: menu   M: mute", { fontFamily: FONT, fontSize: "12px", color: "#6a6a80" })
+      .setOrigin(0.5);
 
     const kb = this.input.keyboard!;
     kb.on("keydown-P", () => this.togglePause());
-    kb.on("keydown-R", () => this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel }));
+    kb.on("keydown-R", () => this.restart());
     kb.on("keydown-ESC", () => this.toMenu());
-    kb.on("keydown-M", () => audio.setMuted(!audio.muted));
+    kb.on("keydown-M", toggleSound);
     kb.on("keydown-V", () => haptics.toggle());
     kb.on("keydown", () => audio.start());
     this.input.on("pointerdown", () => audio.start());
+
+    this.place();
 
     audio.start();
     audio.setDanger(false);
@@ -169,12 +202,63 @@ export class GameScene extends Phaser.Scene {
       game: this.game_,
       scene: this,
       /** 論理サイズ。canvas は DPR 倍なので、テストは scale.width ではなくこちらで座標を換算する */
-      layout,
+      layout: this.layout,
       tick: (inputs: Input[]) => this.stepOnce(inputs),
     };
 
     if (params.get("countdown") === "0") this.beginPlay();
     else this.runCountdown();
+  }
+
+  /** 画面の向きやサイズが変わったとき。レイアウトが変わるなら置き直す。ゲームの進行はそのまま。 */
+  private relayout(): void {
+    const next = layoutFor(this.mode);
+    if (sameLayout(next, this.layout)) return;
+    this.layout = next;
+    applyLayout(this, next);
+    this.place();
+    (window as unknown as { __panepon: { layout: Layout } }).__panepon.layout = next;
+  }
+
+  /** 現在のレイアウトに合わせて、盤面と UI の位置を決める。 */
+  private place(): void {
+    const L = this.layout;
+    const W = L.width;
+    const H = L.height;
+    const boards = this.game_.boards;
+    const top = L.portrait ? 52 : 70;
+    const placeBoard = (i: number, ox: number, oy: number, scale: number): void => {
+      this.views[i].place(ox, oy, scale);
+      this.touches[i]?.place(ox, oy, scale);
+      this.raiseHints[i].setPosition(ox + (BOARD_W / 2) * scale, oy + BOARD_H * scale + (L.portrait ? 44 : 34));
+    };
+    if (boards.length === 1) {
+      placeBoard(0, Math.floor((W - BOARD_W) / 2), top, 1);
+    } else if (this.mode === "cpu" && L.portrait) {
+      // 自分の盤面はエンドレスと同じ大きさ。CPU の盤面は右に小さく
+      const cpuW = BOARD_W * CPU_BOARD_SCALE;
+      const gap = 12;
+      const ox1 = Math.floor((W - BOARD_W - gap - cpuW) / 2);
+      placeBoard(0, ox1, top, 1);
+      placeBoard(1, ox1 + BOARD_W + gap, top, CPU_BOARD_SCALE);
+      this.vsText?.setVisible(false);
+    } else {
+      const gap = L.portrait ? 20 : 120;
+      const ox1 = Math.floor(W / 2 - gap / 2 - BOARD_W);
+      const ox2 = Math.floor(W / 2 + gap / 2);
+      placeBoard(0, ox1, top, 1);
+      placeBoard(1, ox2, top, 1);
+      this.vsText?.setPosition(W / 2, top + BOARD_H / 2).setFontSize(L.portrait ? 18 : 28).setVisible(true);
+    }
+    // ポーズボタンは自分の盤面の右上（得点表示の右）
+    const v0 = this.views[0];
+    this.pauseButton.setPosition(v0.ox + BOARD_W - 22, top - 24);
+
+    this.pauseDim.setSize(W, H);
+    this.pauseTitle.setPosition(W / 2, H / 2 - 40 - this.pauseButtons.length * 23 - 20);
+    this.pauseButtons.forEach((b, i) => b.setPosition(W / 2, H / 2 - (this.pauseButtons.length - 1) * 23 + i * 46));
+
+    this.hintText.setPosition(W / 2, H - 14).setVisible(!L.touch);
   }
 
   /** 3・2・1・START のカウントダウン。各盤面の中央に出す。START でゲームが動き出し、BGM が始まる。 */
@@ -184,11 +268,12 @@ export class GameScene extends Phaser.Scene {
       this.add
         .text(v.center.x, v.center.y, "", { fontFamily: FONT, fontSize: "64px", color: "#ffe066", fontStyle: "bold", stroke: "#1a1a2a", strokeThickness: 8 })
         .setOrigin(0.5)
+        .setScale(v.scale)
         .setDepth(40),
     );
     const show = (label: string, big: boolean): void => {
-      for (const text of texts) text.setText(label).setScale(big ? 1.8 : 1.5).setAlpha(1);
-      this.tweens.add({ targets: texts, scale: 1, duration: 180, ease: "Back.Out" });
+      texts.forEach((text, i) => text.setText(label).setScale((big ? 1.8 : 1.5) * this.views[i].scale).setAlpha(1));
+      texts.forEach((text, i) => this.tweens.add({ targets: text, scale: this.views[i].scale, duration: 180, ease: "Back.Out" }));
     };
     const STEP = 700;
     ["3", "2", "1"].forEach((label, i) => {
@@ -213,6 +298,10 @@ export class GameScene extends Phaser.Scene {
     audio.startBgm("game");
   }
 
+  private restart(): void {
+    this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
+  }
+
   private toMenu(): void {
     audio.stopBgm();
     this.touches.forEach((t) => t.destroy());
@@ -235,7 +324,8 @@ export class GameScene extends Phaser.Scene {
   private setPaused(on: boolean): void {
     if (this.paused === on) return;
     this.paused = on;
-    this.pauseText.setVisible(on);
+    this.pauseMenu.setVisible(on);
+    this.pauseButton.setVisible(!on);
     audio.pause(on);
     if (on) {
       audio.suspend();
@@ -285,6 +375,7 @@ export class GameScene extends Phaser.Scene {
 
   private finish(): void {
     this.ended = true;
+    this.pauseButton.setVisible(false);
     const g = this.game_;
     // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音
     const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" && g.winner === 0;
@@ -295,20 +386,21 @@ export class GameScene extends Phaser.Scene {
       audio.lose();
       haptics.gameOver();
     }
-    // 結果表示のあと、盤面の中をタップ（クリック）するとやり直す
+    // 結果表示のあと、盤面の中をタップ（クリック）するとやり直す。自分の盤面には RETRY / MENU のボタンも出す
     this.time.delayedCall(800, () => {
       this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-        if (this.touches.some((t) => t.cellAt(p.worldX, p.worldY))) this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
+        if (this.touches.some((t) => t.cellAt(p.worldX, p.worldY))) this.restart();
       });
+      const retry = new Button(this, -46, BOARD_H / 2 - 40, "RETRY", () => this.restart(), { minWidth: 84, minHeight: 36 });
+      const menu = new Button(this, 46, BOARD_H / 2 - 40, "MENU", () => this.toMenu(), { minWidth: 84, minHeight: 36 });
+      this.views[0].addToOverlay(retry);
+      this.views[0].addToOverlay(menu);
     });
     if (this.mode === "endless") {
       const b = g.boards[0];
       const rank = recordEndless(b.score, b.maxChain);
       const rankLine = rank === 1 ? "NEW RECORD!" : rank > 0 ? `RANK ${rank}` : "";
-      this.views[0].showOverlay(
-        "GAME OVER",
-        `SCORE ${b.score}\nMAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n${rankLine}\n\nR / tap: restart   Esc: menu`,
-      );
+      this.views[0].showOverlay("GAME OVER", `SCORE ${b.score}\nMAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n${rankLine}`);
     } else {
       let recordLine = "";
       if (this.mode === "cpu" && g.winner >= 0) {
@@ -317,10 +409,7 @@ export class GameScene extends Phaser.Scene {
       }
       g.boards.forEach((b, i) => {
         const won = g.winner === i;
-        this.views[i].showOverlay(
-          won ? "WIN" : "LOSE",
-          `MAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}${i === 0 ? recordLine : ""}\n\nR / tap: rematch   Esc: menu`,
-        );
+        this.views[i].showOverlay(won ? "WIN" : "LOSE", `MAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}${i === 0 ? recordLine : ""}`);
       });
     }
   }

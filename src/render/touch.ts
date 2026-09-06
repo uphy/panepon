@@ -2,8 +2,8 @@ import Phaser from "phaser";
 import { Board, COLS, ROWS, type Input } from "../core";
 import { BOARD_H, BOARD_W, CELL } from "./theme";
 
-/** 横ドラッグを「入れ替え」と判定する移動量。 */
-const SWIPE_THRESHOLD = CELL * 0.35;
+/** 横ドラッグを「入れ替え」と判定する移動量（マスの幅に対する割合）。 */
+const SWIPE_RATIO = 0.35;
 /** これ以下の移動ならタップ扱い。 */
 const TAP_SLOP = 8;
 
@@ -33,11 +33,14 @@ export class TouchInput {
   /** 盤面の外を押してせり上げている指。 */
   readonly raisePointers = new Set<number>();
 
+  /** 盤面の左上の論理座標と拡大率。BoardView.place() と同じ値を渡す。 */
+  ox = 0;
+  oy = 0;
+  scale = 1;
+
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly board: Board,
-    readonly ox: number,
-    readonly oy: number,
   ) {
     scene.input.on("pointerdown", this.onDown, this);
     scene.input.on("pointermove", this.onMove, this);
@@ -61,12 +64,24 @@ export class TouchInput {
     this.raisePointers.clear();
   }
 
+  place(ox: number, oy: number, scale = 1): void {
+    this.ox = ox;
+    this.oy = oy;
+    this.scale = scale;
+  }
+
+  /** 画面上のマスの大きさ（論理 px）。 */
+  private get cell(): number {
+    return CELL * this.scale;
+  }
+
   /** 論理座標（Pointer の worldX / worldY）を盤面のマスに変換する。盤面の外なら null。 */
   cellAt(px: number, py: number): { x: number; y: number } | null {
-    if (px < this.ox || px >= this.ox + BOARD_W || py < this.oy || py >= this.oy + BOARD_H) return null;
-    const x = Math.floor((px - this.ox) / CELL);
-    const rise = this.board.riseProgress * CELL;
-    const y = ROWS - 1 - Math.floor((py - this.oy + rise) / CELL);
+    const cell = this.cell;
+    if (px < this.ox || px >= this.ox + BOARD_W * this.scale || py < this.oy || py >= this.oy + BOARD_H * this.scale) return null;
+    const x = Math.floor((px - this.ox) / cell);
+    const rise = this.board.riseProgress * cell;
+    const y = ROWS - 1 - Math.floor((py - this.oy + rise) / cell);
     return { x: Math.max(0, Math.min(COLS - 1, x)), y: Math.max(0, Math.min(ROWS - 1, y)) };
   }
 
@@ -85,7 +100,7 @@ export class TouchInput {
     const d = this.drags.get(p.id);
     if (!d) return;
     const dx = p.worldX - d.startX;
-    if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+    if (Math.abs(dx) < this.cell * SWIPE_RATIO) return;
     const dir = dx > 0 ? 1 : -1;
     const target = d.cellX + dir;
     if (target < 0 || target >= COLS) return;
@@ -93,7 +108,7 @@ export class TouchInput {
     // 掴んでいるパネルの現在の高さで入れ替える（せり上がりで段がずれても追従する）
     this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false, cursorTo: { x: left, y: d.cellY } });
     d.cellX = target;
-    d.startX += dir * CELL;
+    d.startX += dir * this.cell;
     d.mode = "swipe";
   }
 
@@ -106,7 +121,7 @@ export class TouchInput {
     if (Math.abs(p.worldX - d.startX) > TAP_SLOP || Math.abs(p.worldY - d.startY) > TAP_SLOP) return;
     // タップ1回で入れ替える。タップ位置に最も近いマスの境目を挟む2枚が対象。
     // マスの中央を叩いたときは、左右のうち近い側の隣と入れ替える。
-    const boundary = Math.round((d.startX - this.ox) / CELL);
+    const boundary = Math.round((d.startX - this.ox) / this.cell);
     const left = Math.max(0, Math.min(COLS - 2, boundary - 1));
     this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false, cursorTo: { x: left, y: d.cellY } });
   }

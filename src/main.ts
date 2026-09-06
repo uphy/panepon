@@ -9,7 +9,7 @@ const layout = layoutFor("menu");
 
 new Phaser.Game({
   type: Phaser.AUTO,
-  parent: "app",
+  parent: "game",
   width: layout.width * DPR,
   height: layout.height * DPR,
   backgroundColor: BG_COLOR,

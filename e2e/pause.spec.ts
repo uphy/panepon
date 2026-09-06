@@ -20,7 +20,7 @@ test("画面が隠れるとポーズし、BGM が止まる。戻ってタップ�
   await page.waitForTimeout(100);
   const hidden = await page.evaluate(() => {
     const p = (window as any).__panepon;
-    return { paused: p.scene.paused, frame: p.game.boards[0].frame, pauseVisible: p.scene.pauseText.visible };
+    return { paused: p.scene.paused, frame: p.game.boards[0].frame, pauseVisible: p.scene.pauseMenu.visible };
   });
   expect(hidden.paused).toBe(true);
   expect(hidden.pauseVisible).toBe(true);
@@ -35,8 +35,8 @@ test("画面が隠れるとポーズし、BGM が止まる。戻ってタップ�
   expect(afterVisible.paused).toBe(true);
   expect(afterVisible.frame).toBe(hidden.frame);
 
-  // タップで再開し、フレームが進む
-  await page.mouse.click(480, 300);
+  // ポーズ画面のボタン以外をタップすると再開し、フレームが進む
+  await page.mouse.click(40, 40);
   await page.waitForTimeout(300);
   const resumed = await page.evaluate(() => {
     const p = (window as any).__panepon;

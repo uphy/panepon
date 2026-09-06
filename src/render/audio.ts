@@ -60,6 +60,8 @@ const st = (f: number, semis: number): number => f * Math.pow(2, semis / 12);
  * BGM は AudioContext ができる前に startBgm() されても覚えておき、start() 時に鳴らし始める。
  * 効果音の設計は tools/sfx-candidates.html で選んだ案を移したもの。
  */
+const MUTE_KEY = "panepon.mute.v1";
+
 export class GameAudio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -75,6 +77,15 @@ export class GameAudio {
   /** false のとき startBgm() を無視する。e2e で ?bgm=0 を付けるときに使う。 */
   bgmEnabled = true;
 
+  constructor() {
+    // ミュートは localStorage に覚えておく。スマホでは画面のボタンで切り替えるので、次回も同じ状態で始める
+    try {
+      this.muted = localStorage.getItem(MUTE_KEY) === "on";
+    } catch {
+      this.muted = false;
+    }
+  }
+
   start(): void {
     if (this.ctx) {
       if (this.ctx.state === "suspended") void this.ctx.resume();
@@ -88,7 +99,7 @@ export class GameAudio {
     }
     this.ctx = ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = 0.35;
+    this.master.gain.value = this.muted ? 0 : 0.35;
     this.master.connect(ctx.destination);
 
     // 効果音。SFC の丸い音にするため高域を削り、短いエコーを付ける
@@ -132,6 +143,11 @@ export class GameAudio {
   setMuted(m: boolean): void {
     this.muted = m;
     if (this.master) this.master.gain.value = m ? 0 : 0.35;
+    try {
+      localStorage.setItem(MUTE_KEY, m ? "on" : "off");
+    } catch {
+      // 保存できなくても動作には影響しない
+    }
   }
 
   // ------------------------------------------------------------- 合成の部品

@@ -26,7 +26,7 @@ test("戻る操作: 1回目はポーズ、2回目でメニュー。ページは�
     const right = p.scene.views[1];
     return {
       left: rect.left + left.ox * scale,
-      right: window.innerWidth - (rect.left + (right.ox + 192) * scale),
+      right: window.innerWidth - (rect.left + (right.ox + 192 * right.scale) * scale),
     };
   });
   expect(margins.left).toBeGreaterThanOrEqual(24);
