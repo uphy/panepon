@@ -317,7 +317,6 @@ export class GameScene extends Phaser.Scene {
   private beginPlay(): void {
     this.starting = false;
     this.touches.forEach((t) => t.clear());
-    this.views.forEach((v) => v.resetTimer());
     this.accumulator = 0;
     audio.gameStart();
     audio.startBgm("game");

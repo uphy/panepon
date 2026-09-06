@@ -33,18 +33,12 @@ export class BoardView {
   private readonly overlayTitle: Phaser.GameObjects.Text;
   private readonly overlayBody: Phaser.GameObjects.Text;
   private stopBar: Phaser.GameObjects.Rectangle;
-  private startTime = 0;
   /** 盤面の左上の画面座標（論理 px）と拡大率。place() で更新する。 */
   ox = 0;
   oy = 0;
   scale = 1;
   /** 得点・時間・予告おじゃまを置く場所。top は盤面の上下、left / right は盤面の横（横持ちのスマホ用）。 */
   hud: HudSide = "top";
-
-  /** 経過時間の起点を今にする。カウントダウンが終わって動き出すときに呼ぶ。 */
-  resetTimer(): void {
-    this.startTime = this.scene.time.now;
-  }
 
   /** 盤面の中心の画面座標。カウントダウンの数字を出す位置に使う。 */
   get center(): { x: number; y: number } {
@@ -120,7 +114,6 @@ export class BoardView {
       .setOrigin(0.5);
     this.overlay.add([dim, this.overlayTitle, this.overlayBody]);
     this.root.add(this.overlay);
-    this.startTime = Number.POSITIVE_INFINITY; // resetTimer() が呼ばれるまで 00:00
   }
 
   /** 結果画面などのボタンを盤面の上に置く。局所座標（盤面の左上が原点）で渡す。 */
@@ -291,7 +284,8 @@ export class BoardView {
       // 残り時間。ゲームのフレームで数えるので、ポーズ中は減らない
       seconds = Math.ceil(Math.max(0, this.timeLimit - b.frame) / 60);
     } else {
-      seconds = Math.max(0, Math.floor((this.scene.time.now - this.startTime) / 1000));
+      // 経過時間。ゲームのフレームで数えるので、決着後は frame が止まって表示も止まる
+      seconds = Math.floor(b.frame / 60);
     }
     const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
     const ss = String(seconds % 60).padStart(2, "0");
