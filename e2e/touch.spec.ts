@@ -10,8 +10,8 @@ async function cellCenter(page: Page, x: number, y: number): Promise<{ x: number
       const t = p.scene.touches[0];
       const canvas = document.querySelector("canvas")!;
       const rect = canvas.getBoundingClientRect();
-      const scaleX = rect.width / p.scene.scale.width;
-      const scaleY = rect.height / p.scene.scale.height;
+      const scaleX = rect.width / p.layout.width;
+      const scaleY = rect.height / p.layout.height;
       const gx = t.ox + cx * 32 + 16;
       const gy = t.oy + (11 - cy) * 32 + 16 - p.game.boards[0].riseProgress * 32;
       return { x: rect.left + gx * scaleX, y: rect.top + gy * scaleY };
@@ -27,8 +27,8 @@ async function belowBoard(page: Page): Promise<{ x: number; y: number }> {
     const t = p.scene.touches[0];
     const canvas = document.querySelector("canvas")!;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = rect.width / p.scene.scale.width;
-    const scaleY = rect.height / p.scene.scale.height;
+    const scaleX = rect.width / p.layout.width;
+    const scaleY = rect.height / p.layout.height;
     return { x: rect.left + (t.ox + 96) * scaleX, y: rect.top + (t.oy + 12 * 32 + 40) * scaleY };
   });
 }
@@ -109,7 +109,7 @@ test.describe("スマホ縦画面", () => {
     await page.waitForTimeout(300);
     const size = await page.evaluate(() => {
       const p = (window as any).__panepon;
-      return { w: p.scene.scale.width, h: p.scene.scale.height };
+      return { w: p.layout.width, h: p.layout.height };
     });
     expect(size).toEqual({ w: 300, h: 600 });
     await page.screenshot({ path: `${SHOT}/mobile-endless.png` });

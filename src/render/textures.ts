@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { CELL, GARBAGE_COLOR, GARBAGE_DARK, KIND_COLORS, KIND_NAMES } from "./theme";
+import { DPR } from "./hidpi";
 
 function shade(color: number, factor: number): number {
   const c = Phaser.Display.Color.IntegerToColor(color);
@@ -51,9 +52,15 @@ function drawSymbol(g: Phaser.GameObjects.Graphics, name: string, cx: number, cy
   }
 }
 
-/** パネル・おじゃま・カーソルのテクスチャを Graphics から生成する。画像ファイルは使わない。 */
+/**
+ * パネル・おじゃま・カーソルのテクスチャを Graphics から生成する。画像ファイルは使わない。
+ * 高解像度端末でぼやけないよう DPR 倍の大きさで生成する。使う側は Image を 1/DPR に縮める。
+ */
 export function createTextures(scene: Phaser.Scene): void {
-  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const g = scene.make.graphics({ x: 0, y: 0 }, false).setScale(DPR);
+  const tex = (key: string, w: number, h: number): void => {
+    g.generateTexture(key, Math.ceil(w * DPR), Math.ceil(h * DPR));
+  };
   const pad = 1;
   const size = CELL - pad * 2;
 
@@ -68,7 +75,7 @@ export function createTextures(scene: Phaser.Scene): void {
       g.fillStyle(shade(base, 1.25), 1);
       g.fillRoundedRect(pad + 3, pad + 3, size - 6, 5, 3);
       if (variant !== "-dark") drawSymbol(g, KIND_NAMES[kind], CELL / 2, CELL / 2 + 1, CELL * 0.3);
-      g.generateTexture(`panel-${kind}${variant}`, CELL, CELL);
+      tex(`panel-${kind}${variant}`, CELL, CELL);
     }
   });
 
@@ -87,7 +94,7 @@ export function createTextures(scene: Phaser.Scene): void {
       g.fillRoundedRect(CELL / 2 - 3, 7, 6, 13, 2);
       g.fillCircle(CELL / 2, 25, 3.2);
     }
-    g.generateTexture(`panel-6${variant}`, CELL, CELL);
+    tex(`panel-6${variant}`, CELL, CELL);
   }
 
   // ビックリパネルで送る灰色のおじゃま。石模様で通常のおじゃまと区別する。
@@ -105,7 +112,7 @@ export function createTextures(scene: Phaser.Scene): void {
   g.fillRect(3, 3, 10, 3);
   g.fillRect(19, 3, 10, 3);
   g.fillRect(11, 19, 10, 3);
-  g.generateTexture("garbage-shock", CELL, CELL);
+  tex("garbage-shock", CELL, CELL);
 
   // おじゃま（通常）。ブロックの端を判別できるよう、単セルの繰り返し柄で描く。
   g.clear();
@@ -117,12 +124,12 @@ export function createTextures(scene: Phaser.Scene): void {
   g.fillRect(3, 3, CELL - 6, 4);
   g.fillStyle(GARBAGE_DARK, 1);
   g.fillRect(6, 14, CELL - 12, 4);
-  g.generateTexture("garbage", CELL, CELL);
+  tex("garbage", CELL, CELL);
 
   g.clear();
   g.fillStyle(0xffffff, 1);
   g.fillRect(0, 0, CELL, CELL);
-  g.generateTexture("white", CELL, CELL);
+  tex("white", CELL, CELL);
 
   // カーソル（横2マス）
   g.clear();
@@ -149,7 +156,7 @@ export function createTextures(scene: Phaser.Scene): void {
   g.moveTo(w / 2, h);
   g.lineTo(w / 2, h - 4);
   g.strokePath();
-  g.generateTexture("cursor", w + 1, h + 1);
+  tex("cursor", w + 1, h + 1);
 
   g.destroy();
 }

@@ -6,6 +6,7 @@ import { P1_KEYS, P2_KEYS, PlayerInput } from "./input";
 import { audio } from "./shared";
 import { haptics } from "./haptics";
 import { TouchInput } from "./touch";
+import { applyLayout } from "./hidpi";
 import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, layoutFor } from "./theme";
 
 const STEP_MS = 1000 / 60;
@@ -51,7 +52,7 @@ export class GameScene extends Phaser.Scene {
     this.touches = [];
 
     const layout = layoutFor(this.mode);
-    this.scale.resize(layout.width, layout.height);
+    applyLayout(this, layout);
     const W = layout.width;
     const H = layout.height;
 
@@ -99,10 +100,10 @@ export class GameScene extends Phaser.Scene {
     );
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
-      if (this.touches.some((t) => t.cellAt(p.x, p.y))) return;
-      if (p.y > H - 22) return; // 画面下端のメニュー用テキスト
+      if (this.touches.some((t) => t.cellAt(p.worldX, p.worldY))) return;
+      if (p.worldY > H - 22) return; // 画面下端のメニュー用テキスト
       let nearest = 0;
-      if (this.touches.length === 2) nearest = p.x < W / 2 ? 0 : 1;
+      if (this.touches.length === 2) nearest = p.worldX < W / 2 ? 0 : 1;
       this.touches[nearest]?.raisePointers.add(p.id);
     });
 
@@ -167,6 +168,8 @@ export class GameScene extends Phaser.Scene {
     (window as unknown as { __panepon: unknown }).__panepon = {
       game: this.game_,
       scene: this,
+      /** 論理サイズ。canvas は DPR 倍なので、テストは scale.width ではなくこちらで座標を換算する */
+      layout,
       tick: (inputs: Input[]) => this.stepOnce(inputs),
     };
 
@@ -295,7 +298,7 @@ export class GameScene extends Phaser.Scene {
     // 結果表示のあと、盤面の中をタップ（クリック）するとやり直す
     this.time.delayedCall(800, () => {
       this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-        if (this.touches.some((t) => t.cellAt(p.x, p.y))) this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
+        if (this.touches.some((t) => t.cellAt(p.worldX, p.worldY))) this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
       });
     });
     if (this.mode === "endless") {

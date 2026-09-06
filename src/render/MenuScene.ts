@@ -5,6 +5,7 @@ import type { CpuLevel, GameMode } from "../core";
 import { audio } from "./shared";
 import { loadHighScores } from "./highscore";
 import { haptics } from "./haptics";
+import { DPR, applyLayout } from "./hidpi";
 
 interface MenuItem {
   label: string;
@@ -48,7 +49,7 @@ export class MenuScene extends Phaser.Scene {
     }
 
     const layout = layoutFor("menu");
-    this.scale.resize(layout.width, layout.height);
+    applyLayout(this, layout);
     const W = layout.width;
     const H = layout.height;
     const cx = W / 2;
@@ -66,7 +67,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     KIND_COLORS.forEach((_, k) => {
-      this.add.image(cx - 100 + k * 40, titleY + 88, `panel-${k}`);
+      this.add.image(cx - 100 + k * 40, titleY + 88, `panel-${k}`).setScale(1 / DPR);
     });
 
     const itemTop = titleY + 134;

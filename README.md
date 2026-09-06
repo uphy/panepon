@@ -4,6 +4,7 @@
 
 - ゲームロジックは `src/core/` に閉じ込めた純粋な TypeScript。DOM・Phaser に依存しない
 - 描画・入力・音は `src/render/` で Phaser 4 を使う。画像・音声ファイルは使わず、すべてコードで生成する
+- スマホの高解像度画面でぼやけないよう、canvas は論理サイズ × devicePixelRatio で作り、カメラの zoom で論理座標を保つ（`src/render/hidpi.ts`）
 - 60fps の固定 tick で進む決定論的シミュレーション。同じ seed と入力列なら同じ結果になる
 
 ## 動かす

@@ -21,7 +21,7 @@ test("戻る操作: 1回目はポーズ、2回目でメニュー。ページは�
     const p = (window as any).__panepon;
     const canvas = document.querySelector("canvas")!;
     const rect = canvas.getBoundingClientRect();
-    const scale = rect.width / p.scene.scale.width;
+    const scale = rect.width / p.layout.width;
     const left = p.scene.views[0];
     const right = p.scene.views[1];
     return {

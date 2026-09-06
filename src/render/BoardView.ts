@@ -3,6 +3,7 @@ import { Board, COLS, EMPTY, ROWS, TIMING, TOTAL_ROWS, isPanel, type BoardEvent 
 import { BOARD_BG, BOARD_H, BOARD_W, CELL, FONT, TEXT_COLOR } from "./theme";
 import { audio } from "./shared";
 import { haptics } from "./haptics";
+import { DPR } from "./hidpi";
 
 /** 描画する行の範囲。可視12段の上に、降ってくるおじゃまが見えるぶんだけ余裕を持たせる。 */
 const DRAW_ROWS = Math.min(TOTAL_ROWS, ROWS + 6);
@@ -53,18 +54,18 @@ export class BoardView {
     for (let r = 0; r < DRAW_ROWS; r++) {
       const row: Phaser.GameObjects.Image[] = [];
       for (let c = 0; c < COLS; c++) {
-        const img = scene.add.image(0, 0, "panel-0").setOrigin(0).setVisible(false);
+        const img = scene.add.image(0, 0, "panel-0").setOrigin(0).setScale(1 / DPR).setVisible(false);
         this.container.add(img);
         row.push(img);
       }
       this.cells.push(row);
     }
     for (let c = 0; c < COLS; c++) {
-      const img = scene.add.image(0, 0, "panel-0-dark").setOrigin(0);
+      const img = scene.add.image(0, 0, "panel-0-dark").setOrigin(0).setScale(1 / DPR);
       this.container.add(img);
       this.nextCells.push(img);
     }
-    this.cursor = scene.add.image(0, 0, "cursor").setOrigin(0);
+    this.cursor = scene.add.image(0, 0, "cursor").setOrigin(0).setScale(1 / DPR);
     this.container.add(this.cursor);
 
     this.scoreText = scene.add
@@ -263,7 +264,8 @@ export class BoardView {
     const top = Math.max(0, this.oy - py);
     const bottom = Math.max(0, py + CELL - (this.oy + BOARD_H));
     if (top >= CELL || bottom >= CELL) return false;
-    img.setCrop(0, top, CELL, CELL - top - bottom);
+    // setCrop はテクスチャのピクセル単位なので DPR 倍で指定する
+    img.setCrop(0, top * DPR, CELL * DPR, (CELL - top - bottom) * DPR);
     return true;
   }
 

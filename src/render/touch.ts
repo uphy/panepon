@@ -61,7 +61,7 @@ export class TouchInput {
     this.raisePointers.clear();
   }
 
-  /** 画面座標を盤面のマスに変換する。盤面の外なら null。 */
+  /** 論理座標（Pointer の worldX / worldY）を盤面のマスに変換する。盤面の外なら null。 */
   cellAt(px: number, py: number): { x: number; y: number } | null {
     if (px < this.ox || px >= this.ox + BOARD_W || py < this.oy || py >= this.oy + BOARD_H) return null;
     const x = Math.floor((px - this.ox) / CELL);
@@ -76,15 +76,15 @@ export class TouchInput {
   }
 
   private onDown(p: Phaser.Input.Pointer): void {
-    const cell = this.cellAt(p.x, p.y);
+    const cell = this.cellAt(p.worldX, p.worldY);
     if (!cell) return;
-    this.drags.set(p.id, { startX: p.x, startY: p.y, cellX: cell.x, cellY: cell.y, mode: "pending" });
+    this.drags.set(p.id, { startX: p.worldX, startY: p.worldY, cellX: cell.x, cellY: cell.y, mode: "pending" });
   }
 
   private onMove(p: Phaser.Input.Pointer): void {
     const d = this.drags.get(p.id);
     if (!d) return;
-    const dx = p.x - d.startX;
+    const dx = p.worldX - d.startX;
     if (Math.abs(dx) < SWIPE_THRESHOLD) return;
     const dir = dx > 0 ? 1 : -1;
     const target = d.cellX + dir;
@@ -103,7 +103,7 @@ export class TouchInput {
     if (!d) return;
     this.drags.delete(p.id);
     if (d.mode !== "pending") return;
-    if (Math.abs(p.x - d.startX) > TAP_SLOP || Math.abs(p.y - d.startY) > TAP_SLOP) return;
+    if (Math.abs(p.worldX - d.startX) > TAP_SLOP || Math.abs(p.worldY - d.startY) > TAP_SLOP) return;
     // タップ1回で入れ替える。タップ位置に最も近いマスの境目を挟む2枚が対象。
     // マスの中央を叩いたときは、左右のうち近い側の隣と入れ替える。
     const boundary = Math.round((d.startX - this.ox) / CELL);
