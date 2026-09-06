@@ -3,9 +3,12 @@ export const CELL = 32;
 export const BOARD_W = 6 * CELL;
 export const BOARD_H = 12 * CELL;
 
-/** 柄ごとの色。原作の柄と色に合わせる。kind 5 は6種目の逆さんかく。 */
+/**
+ * 柄ごとの色と記号。色だけでなく形でも見分けられるよう、輪郭の違う図形を割り当てる。
+ * kind 5 は高難度で混ざる6種目（ばつ印）。
+ */
 export const KIND_COLORS = [0xe0405a, 0x7ad33a, 0x4cc3e8, 0xf2d13b, 0xa25ad6, 0x3b62e0];
-export const KIND_NAMES = ["heart", "circle", "triangle", "star", "diamond", "invtriangle"];
+export const KIND_NAMES = ["square", "circle", "triangle", "plus", "hexagon", "cross"];
 export const GARBAGE_COLOR = 0x8a8a96;
 export const GARBAGE_DARK = 0x5c5c68;
 export const BG_COLOR = 0x14141c;

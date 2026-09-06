@@ -13,42 +13,49 @@ function shade(color: number, factor: number): number {
 function drawSymbol(g: Phaser.GameObjects.Graphics, name: string, cx: number, cy: number, r: number): void {
   g.fillStyle(0xffffff, 1);
   switch (name) {
-    case "heart": {
-      g.fillCircle(cx - r * 0.45, cy - r * 0.3, r * 0.5);
-      g.fillCircle(cx + r * 0.45, cy - r * 0.3, r * 0.5);
-      g.fillTriangle(cx - r * 0.92, cy - r * 0.1, cx + r * 0.92, cy - r * 0.1, cx, cy + r * 0.95);
+    case "square":
+      g.fillRoundedRect(cx - r * 0.75, cy - r * 0.75, r * 1.5, r * 1.5, 2);
       break;
-    }
     case "circle":
       g.fillCircle(cx, cy, r * 0.8);
       break;
     case "triangle":
       g.fillTriangle(cx, cy - r * 0.9, cx - r * 0.9, cy + r * 0.7, cx + r * 0.9, cy + r * 0.7);
       break;
-    case "invtriangle":
-      g.fillTriangle(cx, cy + r * 0.9, cx - r * 0.9, cy - r * 0.7, cx + r * 0.9, cy - r * 0.7);
+    case "plus": {
+      const t = r * 0.3;
+      g.fillRoundedRect(cx - t, cy - r * 0.9, t * 2, r * 1.8, 2);
+      g.fillRoundedRect(cx - r * 0.9, cy - t, r * 1.8, t * 2, 2);
       break;
-    case "star": {
+    }
+    case "hexagon": {
       const pts: Phaser.Math.Vector2[] = [];
-      for (let i = 0; i < 10; i++) {
-        const rad = i % 2 === 0 ? r * 0.95 : r * 0.42;
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        pts.push(new Phaser.Math.Vector2(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad));
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 3;
+        pts.push(new Phaser.Math.Vector2(cx + Math.cos(a) * r * 0.9, cy + Math.sin(a) * r * 0.9));
       }
       g.fillPoints(pts, true);
       break;
     }
-    case "diamond":
-      g.fillPoints(
-        [
-          new Phaser.Math.Vector2(cx, cy - r * 0.95),
-          new Phaser.Math.Vector2(cx + r * 0.7, cy),
-          new Phaser.Math.Vector2(cx, cy + r * 0.95),
-          new Phaser.Math.Vector2(cx - r * 0.7, cy),
-        ],
-        true,
-      );
+    case "cross": {
+      // ばつ印。太い線分2本を 45° で重ねる
+      const t = r * 0.28;
+      const l = r * 0.9;
+      for (const a of [Math.PI / 4, -Math.PI / 4]) {
+        const dx = Math.cos(a);
+        const dy = Math.sin(a);
+        g.fillPoints(
+          [
+            new Phaser.Math.Vector2(cx - dx * l - dy * t, cy - dy * l + dx * t),
+            new Phaser.Math.Vector2(cx + dx * l - dy * t, cy + dy * l + dx * t),
+            new Phaser.Math.Vector2(cx + dx * l + dy * t, cy + dy * l - dx * t),
+            new Phaser.Math.Vector2(cx - dx * l + dy * t, cy - dy * l - dx * t),
+          ],
+          true,
+        );
+      }
       break;
+    }
   }
 }
 
