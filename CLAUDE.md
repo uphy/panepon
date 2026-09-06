@@ -37,11 +37,12 @@ pnpm puzzles          # パズル面の生成
 
 ## git と PR
 
-- main は保護されていて直接 push できない。ブランチを切り、PR を作り、CI（`.github/workflows/ci.yml`）が通ったら `gh pr merge --rebase --delete-branch` で merge する。merge で main に入ると Cloudflare Workers にデプロイされる（`deploy.yml`）
+- main は保護されていて直接 push できない。ブランチを切り、PR を作り、CI（`.github/workflows/ci.yml`）が通ったら `gh pr merge --squash --delete-branch` で merge する。merge で main に入ると Cloudflare Workers にデプロイされる（`deploy.yml`）
+- squash merge なので、main のコミットは1 PR につき1つになり、1行目は PR タイトル、本文は PR 内の各コミットメッセージの箇条書きになる。PR タイトルにも「何をなぜ変えたか」を書く（例: 「おじゃまの送出と投下のタイミングを原作に合わせ、連鎖の途中に降らないようにする」）。PR 内の手直しは小さいコミットで積んでよく、force push で畳まなくてよい
 - **作業の依頼を受けたら、コードを変える前に必ず worktree を作り、その中で作業する**。`EnterWorktree` があればそれを使う。なければ `git worktree add ../swaprise-<topic> -b <topic> main` のあと `pnpm install`。main の checkout（このディレクトリ）では編集も commit もしない。理由: 複数のセッションが同時に走ることがあり、同じツリーで編集がぶつかった
 - 1 worktree に 1 セッション。e2e は `PREVIEW_PORT=4174 pnpm e2e` のようにポートをずらす（dev は `DEV_PORT`）。merge したら `git worktree remove ../swaprise-<topic>` で片付ける
 - 調べるだけ・答えるだけの依頼（コードを変えない）は worktree を作らなくてよい
 - PR には CI がプレビュー URL をコメントする（Cloudflare の versions upload）。タッチの手触りやレイアウトを変えたときは、merge 前にその URL をスマホで開いて確かめる。メニュー左下のビルド識別子（日付と commit）で、開いている版を確認できる
-- コミットメッセージは日本語で、何をなぜ変えたかを1つの文にまとめる（既存のログに合わせる）。PR の本文は、何をなぜ変えたか・確認したことを書く
+- コミットメッセージは日本語で、何をなぜ変えたかを1つの文にまとめる（既存のログに合わせる）。squash で main に入ったときに本文になるので、手直しのコミットにも理由を書く。PR の本文は、何をなぜ変えたか・確認したことを書く
 - 同じ作業ツリーを別のエージェントや人が触っていることがある。コミットは `git add -A` ではなく、自分が変えたファイルを名指しで add する。`git status` に自分の知らない変更があれば、それは含めずにユーザーへ伝える
 - 旧 URL の転送用 Worker（`redirect/`）は `pnpm deploy:redirect` で手動デプロイ。Worker の削除とリポジトリ名の変更はしない
