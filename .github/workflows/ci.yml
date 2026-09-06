@@ -103,7 +103,11 @@ jobs:
           URL: ${{ steps.upload.outputs.url }}
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          body="<!-- preview-url -->プレビュー: ${URL}
+          # 目印の HTML コメントは1行で独立させ、空行で区切る。同じ行に続けて書くと、行全体が HTML ブロック扱いになって
+          # URL がリンクにならない（プレーンテキストのまま）
+          body="<!-- preview-url -->
+
+          プレビュー: [${URL}](${URL})
           （commit ${SHA:0:7} の版。本番の URL は変わらない）"
           existing=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | startswith("<!-- preview-url -->")) | .id' | head -1)
           if [ -n "$existing" ]; then
