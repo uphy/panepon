@@ -38,7 +38,7 @@ pnpm puzzles          # パズル面の生成
 ## git と PR
 
 - main は保護されていて直接 push できない。ブランチを切り、PR を作り、CI（`.github/workflows/ci.yml`）が通ったら `gh pr merge --squash --delete-branch` で merge する。merge で main に入ると Cloudflare Workers にデプロイされる（`deploy.yml`）
-- squash merge なので、main のコミットは1 PR につき1つになり、1行目は PR タイトル、本文は PR 内の各コミットメッセージの箇条書きになる。PR タイトルにも「何をなぜ変えたか」を書く（例: 「おじゃまの送出と投下のタイミングを原作に合わせ、連鎖の途中に降らないようにする」）。PR 内の手直しは小さいコミットで積んでよく、force push で畳まなくてよい
+- squash merge なので、main のコミットは1 PR につき1つになる。PR のコミットが1つならそのコミットメッセージがそのまま main に入り、2つ以上なら1行目が PR タイトル、本文が各コミットメッセージの箇条書きになる（リポジトリ設定の「コミットまたは PR のタイトル」）。だから PR タイトルにも「何をなぜ変えたか」を書く（例: 「おじゃまの送出と投下のタイミングを原作に合わせ、連鎖の途中に降らないようにする」）。PR 内の手直しは小さいコミットで積んでよく、force push で畳まなくてよい
 - **作業の依頼を受けたら、コードを変える前に必ず worktree を作り、その中で作業する**。`EnterWorktree` があればそれを使う。なければ `git worktree add ../swaprise-<topic> -b <topic> main` のあと `pnpm install`。main の checkout（このディレクトリ）では編集も commit もしない。理由: 複数のセッションが同時に走ることがあり、同じツリーで編集がぶつかった
 - 1 worktree に 1 セッション。e2e は `PREVIEW_PORT=4174 pnpm e2e` のようにポートをずらす（dev は `DEV_PORT`）。merge したら `git worktree remove ../swaprise-<topic>` で片付ける
 - 調べるだけ・答えるだけの依頼（コードを変えない）は worktree を作らなくてよい
