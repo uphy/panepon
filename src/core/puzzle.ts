@@ -48,13 +48,15 @@ export function parseRows(rows: string[]): Grid {
   if (rows.length > ROWS) throw new Error(`rows: ${rows.length} > ${ROWS}`);
   const g = emptyGrid();
   rows.forEach((line, i) => {
-    if (line.length !== COLS) throw new Error(`row ${i}: "${line}" は ${COLS} 文字でない`);
+    if (line.length !== COLS)
+      throw new Error(`row ${i}: "${line}" は ${COLS} 文字でない`);
     const y = rows.length - 1 - i;
     for (let x = 0; x < COLS; x++) {
       const ch = line[x];
       if (ch === ".") continue;
       const k = Number(ch);
-      if (!Number.isInteger(k) || k < 0 || k > 5) throw new Error(`row ${i}: "${ch}" は柄でない`);
+      if (!Number.isInteger(k) || k < 0 || k > 5)
+        throw new Error(`row ${i}: "${ch}" は柄でない`);
       g[y * COLS + x] = k;
     }
   });
@@ -64,7 +66,8 @@ export function parseRows(rows: string[]): Grid {
 /** 盤面を行文字列にする。いちばん高いパネルより上の空の行は省く。 */
 export function formatRows(g: Grid): string[] {
   let top = -1;
-  for (let i = 0; i < g.length; i++) if (g[i] !== EMPTY) top = Math.floor(i / COLS);
+  for (let i = 0; i < g.length; i++)
+    if (g[i] !== EMPTY) top = Math.floor(i / COLS);
   const rows: string[] = [];
   for (let y = top; y >= 0; y--) {
     let line = "";
@@ -152,10 +155,12 @@ function gravity(g: Grid): boolean {
   return moved;
 }
 
-/** 床に着いているパネルの中で、縦横に3つ以上並んだものを集める。 */
-function findMatches(g: Grid, grounded: Uint8Array): number[] {
-  const hit = new Uint8Array(g.length);
-  let any = false;
+/** 床に着いているパネルの中で、縦横に3つ以上並んだものを集める。並びごとに向きとマスを返す。 */
+function matchRuns(
+  g: Grid,
+  grounded: Uint8Array,
+): { dir: "h" | "v"; cells: number[] }[] {
+  const runs: { dir: "h" | "v"; cells: number[] }[] = [];
   for (let y = 0; y < ROWS; y++) {
     let x = 0;
     while (x < COLS) {
@@ -166,10 +171,12 @@ function findMatches(g: Grid, grounded: Uint8Array): number[] {
       }
       const k = g[i];
       let end = x + 1;
-      while (end < COLS && grounded[y * COLS + end] && g[y * COLS + end] === k) end++;
+      while (end < COLS && grounded[y * COLS + end] && g[y * COLS + end] === k)
+        end++;
       if (end - x >= 3) {
-        for (let j = x; j < end; j++) hit[y * COLS + j] = 1;
-        any = true;
+        const cells: number[] = [];
+        for (let j = x; j < end; j++) cells.push(y * COLS + j);
+        runs.push({ dir: "h", cells });
       }
       x = end;
     }
@@ -184,15 +191,24 @@ function findMatches(g: Grid, grounded: Uint8Array): number[] {
       }
       const k = g[i];
       let end = y + 1;
-      while (end < ROWS && grounded[end * COLS + x] && g[end * COLS + x] === k) end++;
+      while (end < ROWS && grounded[end * COLS + x] && g[end * COLS + x] === k)
+        end++;
       if (end - y >= 3) {
-        for (let j = y; j < end; j++) hit[j * COLS + x] = 1;
-        any = true;
+        const cells: number[] = [];
+        for (let j = y; j < end; j++) cells.push(j * COLS + x);
+        runs.push({ dir: "v", cells });
       }
       y = end;
     }
   }
-  if (!any) return [];
+  return runs;
+}
+
+/** 床に着いているパネルの中で、縦横に3つ以上並んだもののマスを集める。 */
+function findMatches(g: Grid, grounded: Uint8Array): number[] {
+  const hit = new Uint8Array(g.length);
+  for (const run of matchRuns(g, grounded))
+    for (const i of run.cells) hit[i] = 1;
   const list: number[] = [];
   for (let i = 0; i < g.length; i++) if (hit[i]) list.push(i);
   return list;
@@ -232,10 +248,83 @@ export function swapResolved(g: Grid, x: number, y: number): Grid | null {
   return next;
 }
 
+/**
+ * 1手の「技法」。面の解き方の種類を表し、似た面が並ばないように生成時に使う。
+ *
+ * - H: 横に揃えて消す
+ * - V: 縦に揃えて消す
+ * - F: 入れ替えた直後は揃わず、パネルが落ちてから揃う
+ * - C: 消えた後に落ちたパネルがまた揃う（連鎖）
+ * - D: 1回の消去で2つ以上の並びが同時に消える
+ * - N: 何も消えない（次の手のための準備）
+ */
+export type Technique = "H" | "V" | "F" | "C" | "D" | "N";
+
+/** 入れ替えを1手進めながら、その手で起きたことを集める。次の静止盤面も返す（意味のない入れ替えは null）。 */
+export function analyzeMove(
+  g: Grid,
+  m: PuzzleMove,
+): { techniques: Set<Technique>; next: Grid } | null {
+  const i = m.y * COLS + m.x;
+  if (g[i] === g[i + 1]) return null;
+  const next = new Int8Array(g);
+  next[i] = g[i + 1];
+  next[i + 1] = g[i];
+  const t = new Set<Technique>();
+  // 入れ替え直後（落ちる前）に揃いがなく、落ちてから揃えば「落として揃える」手
+  const immediate = matchRuns(next, groundedMask(next)).length > 0;
+  let clears = 0;
+  for (;;) {
+    const runs = matchRuns(next, groundedMask(next));
+    if (runs.length > 0) {
+      clears++;
+      if (clears === 1 && !immediate) t.add("F");
+      if (clears >= 2) t.add("C");
+      if (runs.length >= 2) t.add("D");
+      for (const run of runs) {
+        t.add(run.dir === "h" ? "H" : "V");
+        for (const j of run.cells) next[j] = EMPTY;
+      }
+      gravity(next);
+      continue;
+    }
+    if (!gravity(next)) break;
+  }
+  if (clears === 0) t.add("N");
+  return { techniques: t, next };
+}
+
+/**
+ * 解の手順を「技法の並び」にする。手ごとに技法を H/V/F/C/D/N の順に並べ、手の間は "-" で区切る。
+ * 例: "H" は横1手、"FV-H" は落として縦に消してから横1手。
+ * 2手以上で、手順を逆にしても全消しになるなら末尾に "" を、ならなければ "!"（順番が決まる面）を付ける。
+ */
+export function solutionSignature(start: Grid, moves: PuzzleMove[]): string {
+  const order: Technique[] = ["H", "V", "F", "C", "D", "N"];
+  let g: Grid = start;
+  const parts: string[] = [];
+  for (const m of moves) {
+    const r = analyzeMove(g, m);
+    if (!r) return "?";
+    parts.push(order.filter((k) => r.techniques.has(k)).join(""));
+    g = r.next;
+  }
+  let sig = parts.join("-");
+  if (moves.length >= 2) {
+    let h: Grid | null = start;
+    for (const m of [...moves].reverse()) {
+      h = h ? swapResolved(h, m.x, m.y) : null;
+    }
+    if (!h || panelCount(h) !== 0) sig += "!";
+  }
+  return sig;
+}
+
 /** 静止した盤面で意味のある入れ替えを列挙する（上の空の段は飛ばす）。 */
 function* candidateMoves(g: Grid): Generator<PuzzleMove> {
   let top = 0;
-  for (let i = 0; i < g.length; i++) if (g[i] !== EMPTY) top = Math.floor(i / COLS);
+  for (let i = 0; i < g.length; i++)
+    if (g[i] !== EMPTY) top = Math.floor(i / COLS);
   for (let y = 0; y <= top; y++) {
     for (let x = 0; x < COLS - 1; x++) {
       const i = y * COLS + x;
@@ -256,7 +345,11 @@ export interface SolveOptions {
  * 全消しできる最短の手順を maxMoves 手まで探す。見つからなければ null。
  * 静止盤面の幅優先探索。同じ盤面は一度しか広げず、揃わない柄が残った盤面は捨てる。
  */
-export function solve(start: Grid, maxMoves: number, opts: SolveOptions = {}): PuzzleMove[] | null {
+export function solve(
+  start: Grid,
+  maxMoves: number,
+  opts: SolveOptions = {},
+): PuzzleMove[] | null {
   if (panelCount(start) === 0) return [];
   if (hasDeadKind(start)) return null;
   const maxStates = opts.maxStates ?? Number.POSITIVE_INFINITY;
@@ -269,7 +362,8 @@ export function solve(start: Grid, maxMoves: number, opts: SolveOptions = {}): P
   let frontier: Node[] = [{ g: start, parent: null, move: null }];
   const pathOf = (n: Node, last: PuzzleMove): PuzzleMove[] => {
     const path: PuzzleMove[] = [last];
-    for (let cur: Node | null = n; cur && cur.move; cur = cur.parent) path.push(cur.move);
+    for (let cur: Node | null = n; cur && cur.move; cur = cur.parent)
+      path.push(cur.move);
     return path.reverse();
   };
   for (let depth = 1; depth <= maxMoves; depth++) {
@@ -297,7 +391,12 @@ export function solve(start: Grid, maxMoves: number, opts: SolveOptions = {}): P
  * ちょうど moves 手で全消しする手順の数（cap で打ち切る）。面の一意性の目安にする。
  * 途中で全消しした手順は数えない（それは短い解として別に扱う）。
  */
-export function countSolutions(start: Grid, moves: number, cap = 100, opts: SolveOptions = {}): number {
+export function countSolutions(
+  start: Grid,
+  moves: number,
+  cap = 100,
+  opts: SolveOptions = {},
+): number {
   const maxStates = opts.maxStates ?? Number.POSITIVE_INFINITY;
   const memo = new Map<string, number>();
   const rec = (g: Grid, left: number): number => {
@@ -337,7 +436,12 @@ export function parseSolution(s: string): PuzzleMove[] {
 /** パズル用の Board を作って面を置く。 */
 export function boardForStage(stage: PuzzleStage, seed = 0): Board {
   const g = parseRows(stage.rows);
-  const board = new Board({ seed, kinds: 5, initialHeight: 0, moveLimit: stage.moves });
+  const board = new Board({
+    seed,
+    kinds: 5,
+    initialHeight: 0,
+    moveLimit: stage.moves,
+  });
   board.setColumns(gridColumns(g));
   // カーソルは面の高さの範囲に置く
   board.cursor.x = 2;
@@ -358,7 +462,10 @@ export function settle(board: Board, maxFrames = 3000): boolean {
  * 手順を本物の Board で再生し、全消しになれば true。
  * ソルバーの粗い進行と Board の実際の進行がずれていないことをここで確かめる。
  */
-export function replayOnBoard(stage: PuzzleStage, moves: PuzzleMove[]): boolean {
+export function replayOnBoard(
+  stage: PuzzleStage,
+  moves: PuzzleMove[],
+): boolean {
   const board = boardForStage(stage);
   for (const m of moves) {
     if (!settle(board)) return false;

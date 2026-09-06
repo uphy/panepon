@@ -6,6 +6,7 @@ import {
   PUZZLES,
   PUZZLES_PER_STAGE,
   PUZZLE_STAGES,
+  analyzeMove,
   boardForStage,
   countSolutions,
   formatRows,
@@ -17,6 +18,7 @@ import {
   replayOnBoard,
   resolve,
   settle,
+  solutionSignature,
   solve,
   swapResolved,
   type PuzzleStage,
@@ -26,7 +28,10 @@ import { run } from "./helpers";
 /** 1手で消える面。(2,0) と (3,0) を入れ替えると下段が 0 0 0 になる。 */
 const ONE_MOVE: PuzzleStage = { moves: 1, rows: ["00.0.."] };
 /** 往復の確認用。 */
-const SHAPE: PuzzleStage = { moves: 2, rows: ["1.....", "1.....", "01....", "00.1.."] };
+const SHAPE: PuzzleStage = {
+  moves: 2,
+  rows: ["1.....", "1.....", "01....", "00.1.."],
+};
 
 describe("パズル: 盤面の文字列", () => {
   it("行文字列と盤面を往復できる", () => {
@@ -90,6 +95,39 @@ describe("パズル: ソルバー", () => {
   it("盤面の数の上限を超えたら打ち切る", () => {
     const g = parseRows(PUZZLES[PUZZLES.length - 1].rows);
     expect(solve(g, 5, { maxStates: 1 })).toBeNull();
+  });
+});
+
+describe("パズル: 技法の判定", () => {
+  const techs = (rows: string[], x: number, y: number): string =>
+    [...analyzeMove(parseRows(rows), { x, y })!.techniques].sort().join("");
+
+  it("横・縦・落として揃える・連鎖・同時消し・何も消えない を見分ける", () => {
+    expect(techs(["00.0.."], 2, 0)).toBe("H");
+    // (1,2) の 0 を左の列へ入れて縦 3 つ
+    expect(techs([".0....", "01....", "01...."], 0, 2)).toBe("V");
+    // (0,2) の 0 を右へ出すと (1,0) まで落ちて横 3 つ
+    expect(techs(["0.....", "1.....", "1.00.."], 0, 2)).toBe("FH");
+    // 下段の 0 が消えると上の 1 が落ちて (3,0) の 1 と横 3 つ（連鎖）
+    expect(techs([".11...", "0010.."], 2, 0)).toBe("CH");
+    // 1 手で 2 つの並びが同時に消える
+    expect(techs(["001011"], 2, 0)).toBe("DH");
+    expect(techs(["01...."], 0, 0)).toBe("N");
+    // 同じ柄同士・空同士の入れ替えは意味がない
+    expect(analyzeMove(parseRows(["00...."]), { x: 0, y: 0 })).toBeNull();
+  });
+
+  it("解の並びを signature にし、2手以上は順番が決まる面に ! を付ける", () => {
+    expect(solutionSignature(parseRows(ONE_MOVE.rows), [{ x: 2, y: 0 }])).toBe(
+      "H",
+    );
+    PUZZLES.forEach((st) => {
+      const sig = solutionSignature(
+        parseRows(st.rows),
+        parseSolution(st.solution ?? ""),
+      );
+      expect(sig.split("!")[0].split("-")).toHaveLength(st.moves);
+    });
   });
 });
 
@@ -158,8 +196,12 @@ describe("パズル: Game の判定", () => {
   });
 
   it("stage で面データを引く。範囲外は端に丸める", () => {
-    expect(new Game({ mode: "puzzle", seed: 1, stage: 3 }).puzzle).toBe(PUZZLES[3]);
-    expect(new Game({ mode: "puzzle", seed: 1, stage: 999 }).stage).toBe(PUZZLES.length - 1);
+    expect(new Game({ mode: "puzzle", seed: 1, stage: 3 }).puzzle).toBe(
+      PUZZLES[3],
+    );
+    expect(new Game({ mode: "puzzle", seed: 1, stage: 999 }).stage).toBe(
+      PUZZLES.length - 1,
+    );
     expect(new Game({ mode: "endless", seed: 1 }).puzzle).toBeNull();
     expect(new Game({ mode: "endless", seed: 1 }).stage).toBe(-1);
   });
@@ -197,8 +239,25 @@ describe("パズル: 面データ", () => {
     PUZZLES.forEach((st, i) => {
       if (st.moves === 1) return;
       const g = parseRows(st.rows);
-      expect(solve(g, st.moves - 1, { maxStates: 150_000 }), puzzleName(i)).toBeNull();
+      expect(
+        solve(g, st.moves - 1, { maxStates: 150_000 }),
+        puzzleName(i),
+      ).toBeNull();
     });
+  });
+
+  it("同じステージの中で解き方（技法の並び）が重ならない", () => {
+    for (let s = 0; s < PUZZLE_STAGES; s++) {
+      const sigs = PUZZLES.slice(
+        s * PUZZLES_PER_STAGE,
+        (s + 1) * PUZZLES_PER_STAGE,
+      ).map((st) =>
+        solutionSignature(parseRows(st.rows), parseSolution(st.solution ?? "")),
+      );
+      expect(new Set(sigs).size, `stage ${s + 1}: ${sigs.join(" ")}`).toBe(
+        sigs.length,
+      );
+    }
   });
 
   it("同じ面が2つない", () => {
