@@ -32,6 +32,8 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
     p.game.boards[1].setColumns([[0, 0, 3, 0, 0], [1, 2]]);
     // 一時停止前に CPU が送っていた攻撃を捨てる（着地の振動が混ざらないように）
     for (const b of p.game.boards) b.pendingGarbage = [];
+    // 以後 CPU には手を打たせない。CPU が続けて消すと2枚目の板が着地して振動が増える
+    p.game.cpu = null;
   });
   const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__panepon.tick(ins), inputs);
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
