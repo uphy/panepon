@@ -11,7 +11,7 @@ import {
   clearTiming,
   riseFramesPerRow,
 } from "./constants";
-import { garbageFromChain, garbageFromCombo, garbageFromShock, type GarbageSpec } from "./garbage";
+import { garbageFromChain, garbageFromCombo, garbageFromShock, type GarbageSpec, type IncomingGarbage } from "./garbage";
 import { Rng } from "./rng";
 import { capScore, matchScore } from "./scoring";
 import {
@@ -82,10 +82,17 @@ export class Board {
   gameOver = false;
   danger = false;
   panic = false;
-  /** 相手から送られて、まだ降っていないおじゃま。 */
-  pendingGarbage: GarbageSpec[] = [];
+  /** 相手から送られて予告に出ていて、まだ降っていないおじゃま。 */
+  pendingGarbage: IncomingGarbage[] = [];
   /** このフレームで相手に送る攻撃。Game が回収して相手に渡す。 */
   attacksOut: GarbageSpec[] = [];
+  /** 同時消し・ビックリパネルの板で、送るまでの待ち（garbageSendDelay）の途中のもの。 */
+  private outbox: GarbageSpec[] = [];
+  private outboxAt = 0;
+  /** 待ちが明けたが自分の連鎖中だったので、連鎖の終わりまで持っている板。 */
+  private heldForChain: GarbageSpec[] = [];
+  /** 盤面が静止している（動いている・消えている・連鎖フラグ付きのパネルがない）連続フレーム数。 */
+  private quietFrames = 0;
   /** このフレームで起きた出来事。描画・音の層が読む。 */
   events: BoardEvent[] = [];
   readonly garbage = new Map<number, GarbageBlock>();
@@ -299,7 +306,14 @@ export class Board {
     this.updateLevel();
     this.updateRise(input);
     this.updateChainEnd();
+    this.updateOutbox();
     this.updateStatus();
+  }
+
+  /** 相手が送った板を受け取る。予告に出て、garbageTransit のあと盤面が静止したときに降る。 */
+  receiveGarbage(specs: GarbageSpec[]): void {
+    const readyAt = this.frame + TIMING.garbageTransit;
+    for (const spec of specs) this.pendingGarbage.push({ ...spec, readyAt });
   }
 
   // ----------------------------------------------------------------- input
@@ -661,10 +675,23 @@ export class Board {
     return (xOverlap && yTouch) || (yOverlap && xTouch);
   }
 
-  /** 相手から届いたおじゃまを、消去処理が終わっているときに盤面上部へ投下する。 */
+  /**
+   * 相手から届いたおじゃまを盤面上部へ投下する。
+   * 原作どおり、入れ替え・浮遊・落下・消去・変身のどれかが進んでいる間と、連鎖フラグの付いたパネルが残っている間は降らない。
+   * 静止が garbageQuietFrames 続いてから、到着済み（readyAt を過ぎた）の板だけを落とす。
+   * 消し続けている限り降らないので、連鎖や同時消しを繋いで粘れる。
+   */
   private dropPendingGarbage(): void {
+    if (!this.isSettled() || this.hasChainFlag()) {
+      this.quietFrames = 0;
+      return;
+    }
+    this.quietFrames++;
     if (this.pendingGarbage.length === 0) return;
-    if (this.hasMatched() || this.hasTransforming()) return;
+    if (this.quietFrames < TIMING.garbageQuietFrames) return;
+    const ready = this.pendingGarbage.filter((g) => g.readyAt === undefined || g.readyAt <= this.frame);
+    if (ready.length === 0) return;
+    const remaining: IncomingGarbage[] = this.pendingGarbage.filter((g) => !ready.includes(g));
     let top = 0;
     for (let r = TOTAL_ROWS - 1; r >= 0; r--) {
       if (this.cells[r].some((c) => !isEmptyCell(c))) {
@@ -673,10 +700,7 @@ export class Board {
       }
     }
     const base = Math.max(ROWS, top);
-    const specs = [...this.pendingGarbage].sort(
-      (a, b) => a.height - b.height || a.width - b.width,
-    );
-    const remaining: GarbageSpec[] = [];
+    const specs = [...ready].sort((a, b) => a.height - b.height || a.width - b.width);
     for (const spec of specs) {
       const width = Math.min(COLS, spec.width);
       let x = 0;
@@ -808,10 +832,11 @@ export class Board {
     const shockCount = list.filter(({ x, y }) => this.cells[y][x].kind === SHOCK_KIND).length;
     const normalCount = n - shockCount;
     this.stats.shockCleared += shockCount;
+    // 同時消しの板はすぐには送らず、garbageSendDelay 待つ。待っている間の同時消しは合流して待ち直す（原作どおり）
     const attack = [...garbageFromCombo(normalCount), ...garbageFromShock(shockCount)];
     if (attack.length > 0) {
-      this.attacksOut.push(...attack);
-      this.emit({ type: "attack", garbage: attack });
+      this.outbox.push(...attack);
+      this.outboxAt = this.frame + TIMING.garbageSendDelay;
     }
 
     const ct = clearTiming(this.level);
@@ -866,21 +891,38 @@ export class Board {
 
   private updateChainEnd(): void {
     if (this.chain <= 1) return;
-    if (this.hasMatched() || this.hasTransforming()) return;
+    if (this.hasMatched() || this.hasTransforming() || this.hasChainFlag()) return;
+    // 連鎖の板は連鎖が終わってから1枚だけ送る。段階ごとに送ると 7連鎖で 1+2+…+6=21段になり、相手が一瞬で負ける。
+    // 連鎖中に待ちが明けていた同時消しの板も、このとき一緒に送る
+    this.send([...this.heldForChain, ...garbageFromChain(this.chain)]);
+    this.heldForChain = [];
+    this.emit({ type: "chainEnd", chain: this.chain });
+    this.chain = 1;
+  }
+
+  /** 待ちが明けた同時消しの板を送る。自分の連鎖中なら連鎖の終わりまで持つ。 */
+  private updateOutbox(): void {
+    if (this.outbox.length === 0 || this.frame < this.outboxAt) return;
+    const specs = this.outbox;
+    this.outbox = [];
+    if (this.chain > 1) this.heldForChain.push(...specs);
+    else this.send(specs);
+  }
+
+  private send(specs: GarbageSpec[]): void {
+    if (specs.length === 0) return;
+    this.attacksOut.push(...specs);
+    this.emit({ type: "attack", garbage: specs });
+  }
+
+  private hasChainFlag(): boolean {
     for (let r = 0; r < TOTAL_ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const cell = this.cells[r][c];
-        if (isPanel(cell) && cell.chain) return;
+        if (isPanel(cell) && cell.chain) return true;
       }
     }
-    // 連鎖の板は連鎖が終わってから1枚だけ送る。段階ごとに送ると 7連鎖で 1+2+…+6=21段になり、相手が一瞬で負ける
-    const attack = garbageFromChain(this.chain);
-    if (attack.length > 0) {
-      this.attacksOut.push(...attack);
-      this.emit({ type: "attack", garbage: attack });
-    }
-    this.emit({ type: "chainEnd", chain: this.chain });
-    this.chain = 1;
+    return false;
   }
 
   // ------------------------------------------------------------------- rise

@@ -143,13 +143,21 @@ test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page 
   });
   const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__swaprise.tick(ins), inputs);
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
+  const p2State = () =>
+    page.evaluate(() => {
+      const b = (window as any).__swaprise.game.boards[1];
+      return { pending: b.pendingGarbage.length, garbage: b.garbage.size };
+    });
+  // 同時消しの板は揃ってから100フレーム待って送るので、40フレームではまだ相手に届かない
   for (let i = 0; i < 40; i++) {
     await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   }
-  const p2 = await page.evaluate(() => {
-    const b = (window as any).__swaprise.game.boards[1];
-    return { pending: b.pendingGarbage.length, garbage: b.garbage.size };
-  });
+  const early = await p2State();
+  expect(early.pending + early.garbage).toBe(0);
+  for (let i = 0; i < 140; i++) {
+    await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
+  }
+  const p2 = await p2State();
   expect(p2.pending + p2.garbage).toBeGreaterThanOrEqual(1);
   // おじゃまが落ちて着地するまで進める
   for (let i = 0; i < 120; i++) {
@@ -184,10 +192,10 @@ test("対戦: ビックリパネルと灰色のおじゃまが描画される", 
   });
   const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__swaprise.tick(ins), inputs);
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
-  for (let i = 0; i < 6; i++) {
+  // 3枚消しの灰色の板は、揃ってから100フレーム待って送られ、52フレーム後に相手の予告に入り、相手の盤面が静止していれば降る
+  for (let i = 0; i < 200; i++) {
     await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   }
-  // 3枚消しの灰色の板が相手に届く（消去中でない相手の盤面には即座に投下される）
   const shockBlocks = await page.evaluate(() =>
     [...(window as any).__swaprise.game.boards[1].garbage.values()].filter((g: any) => g.type === "shock").length,
   );

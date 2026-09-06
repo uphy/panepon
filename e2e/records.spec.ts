@@ -95,5 +95,6 @@ test("結果画面の SHARE で navigator.share に得点が渡る", async ({ pa
   const shared = await page.evaluate(() => (window as any).__shared);
   expect(shared).toHaveLength(1);
   expect(shared[0].text).toBe("SWAPRISE  SCORE 777  MAX CHAIN x3");
-  expect(shared[0].url).toContain("http://127.0.0.1:4173/");
+  // ポートは PREVIEW_PORT で変わるので固定しない
+  expect(shared[0].url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
 });

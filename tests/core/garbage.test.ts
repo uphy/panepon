@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Board, NO_INPUT, garbageFromChain, garbageFromCombo } from "../../src/core";
+import { Board, NO_INPUT, TIMING, garbageFromChain, garbageFromCombo } from "../../src/core";
 import { run } from "./helpers";
 
 describe("おじゃまパネルの送り方", () => {
@@ -48,6 +48,126 @@ describe("おじゃまパネルの送り方", () => {
     expect(chainEndFrame).toBeGreaterThan(0);
     // 3枚消しの連鎖なので同時消しの板はなく、連鎖の板（幅6・厚さ2）が連鎖終了のフレームに1枚だけ
     expect(attacks).toEqual([{ frame: chainEndFrame, garbage: [{ width: 6, height: 2, type: "normal" }] }]);
+  });
+});
+
+/**
+ * 送るタイミングと降るタイミング（原作の規則）。
+ * 同時消しの板は100フレーム待ってから送り、待っている間の同時消しは合流する。自分の連鎖中に待ちが明けた板は連鎖の終わりに一緒に送る。
+ * 届いた板は52フレーム後に降れるようになり、相手の盤面が静止するまで降らない。
+ */
+describe("おじゃまの送出と投下のタイミング", () => {
+  /** 縦→縦→横の3連鎖ができる盤面（board.test の CHAIN3）。(0,4) の 4 を右の空白へ抜くと始まる。 */
+  const CHAIN3 = [[2, 1, 0, 0, 4, 0, 1, 1, 3], [4, 3], [4, 3]];
+  /** 列 x の (x,2) の 1 を右の空白へ抜くと、上の2枚が落ちて縦4の同時消しになる。 */
+  function combo4Columns(kind: number, other: number): number[][] {
+    return [[kind, kind, other, kind, kind], [other]];
+  }
+  type Attack = { frame: number; garbage: { width: number; height: number }[] };
+  function collect(b: Board, frames: number, attacks: Attack[], chainEnds: number[]): void {
+    for (let f = 0; f < frames; f++) {
+      b.tick(NO_INPUT);
+      for (const e of b.events) {
+        if (e.type === "attack") attacks.push({ frame: b.frame, garbage: e.garbage });
+        if (e.type === "chainEnd") chainEnds.push(b.frame);
+      }
+    }
+  }
+  function swapAt(b: Board, x: number, y: number): void {
+    b.cursor.x = x;
+    b.cursor.y = y;
+    b.tick({ ...NO_INPUT, swap: true });
+  }
+
+  it("同時消しの板は揃ってから100フレーム待って送り、待っている間の同時消しは合流して1度に送る", () => {
+    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
+    b.setColumns([...combo4Columns(0, 1), [], [], ...combo4Columns(2, 3)]);
+    const attacks: Attack[] = [];
+    swapAt(b, 0, 2);
+    let firstMatch = -1;
+    for (let f = 0; f < 40; f++) {
+      b.tick(NO_INPUT);
+      if (firstMatch < 0 && b.events.some((e) => e.type === "match")) firstMatch = b.frame;
+      for (const e of b.events) if (e.type === "attack") attacks.push({ frame: b.frame, garbage: e.garbage });
+    }
+    expect(firstMatch).toBeGreaterThan(0);
+    // 2つ目の同時消し。1つ目の待ちの途中なので合流する
+    swapAt(b, 4, 2);
+    let secondMatch = -1;
+    for (let f = 0; f < 300; f++) {
+      b.tick(NO_INPUT);
+      if (secondMatch < 0 && b.events.some((e) => e.type === "match")) secondMatch = b.frame;
+      for (const e of b.events) if (e.type === "attack") attacks.push({ frame: b.frame, garbage: e.garbage });
+    }
+    expect(secondMatch).toBeGreaterThan(firstMatch);
+    expect(secondMatch - firstMatch).toBeLessThan(TIMING.garbageSendDelay);
+    expect(attacks).toEqual([
+      {
+        frame: secondMatch + TIMING.garbageSendDelay,
+        garbage: [
+          { width: 3, height: 1, type: "normal" },
+          { width: 3, height: 1, type: "normal" },
+        ],
+      },
+    ]);
+  });
+
+  it("自分の連鎖中に待ちが明けた同時消しの板は、連鎖が終わったときに連鎖の板と一緒に送る", () => {
+    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
+    b.setColumns([...CHAIN3, [], ...combo4Columns(2, 3)]);
+    const attacks: Attack[] = [];
+    const chainEnds: number[] = [];
+    swapAt(b, 0, 4);
+    // 2連鎖目が揃ってから同時消しを起こす。板の待ち（100F）は2連鎖目の消去（44+20+27F）と3連鎖目の落下より長い
+    for (let f = 0; f < 600 && b.chain < 2; f++) collect(b, 1, attacks, chainEnds);
+    expect(b.chain).toBe(2);
+    swapAt(b, 4, 2);
+    collect(b, 600, attacks, chainEnds);
+    expect(b.maxChain).toBe(3);
+    expect(chainEnds).toHaveLength(1);
+    expect(attacks).toEqual([
+      {
+        frame: chainEnds[0],
+        garbage: [
+          { width: 3, height: 1, type: "normal" },
+          { width: 6, height: 2, type: "normal" },
+        ],
+      },
+    ]);
+  });
+
+  it("届いた板は相手の盤面が静止するまで降らない。連鎖の途中には降らず、連鎖が終わってから降る", () => {
+    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
+    b.setColumns(CHAIN3);
+    swapAt(b, 0, 4);
+    run(b, 5);
+    b.pendingGarbage.push({ width: 6, height: 1, type: "normal" });
+    let chainEnd = -1;
+    for (let f = 0; f < 600 && chainEnd < 0; f++) {
+      b.tick(NO_INPUT);
+      if (b.events.some((e) => e.type === "chainEnd")) chainEnd = b.frame;
+      // 消えている間も、上のパネルが浮いて落ちている間も、板は予告に留まる
+      expect(b.garbage.size).toBe(0);
+      expect(b.pendingGarbage).toHaveLength(1);
+    }
+    expect(b.maxChain).toBe(3);
+    expect(chainEnd).toBeGreaterThan(0);
+    run(b, TIMING.garbageQuietFrames);
+    expect(b.pendingGarbage).toHaveLength(0);
+    expect(b.garbage.size).toBe(1);
+  });
+
+  it("送られた板は52フレーム後に降れるようになる。それまでは静止した盤面でも予告に留まる", () => {
+    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
+    b.setColumns([[0], [1], [0], [1], [0], [1]]);
+    run(b, 10);
+    b.receiveGarbage([{ width: 6, height: 1, type: "normal" }]);
+    run(b, TIMING.garbageTransit - 1);
+    expect(b.garbage.size).toBe(0);
+    expect(b.pendingGarbage).toHaveLength(1);
+    run(b, 1);
+    expect(b.garbage.size).toBe(1);
+    expect(b.pendingGarbage).toHaveLength(0);
   });
 });
 

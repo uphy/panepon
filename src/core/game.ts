@@ -88,8 +88,8 @@ export class Game {
       const lv = Math.max(a.level, b.level);
       a.raiseLevel(lv);
       b.raiseLevel(lv);
-      if (a.attacksOut.length) b.pendingGarbage.push(...a.attacksOut);
-      if (b.attacksOut.length) a.pendingGarbage.push(...b.attacksOut);
+      if (a.attacksOut.length) b.receiveGarbage(a.attacksOut);
+      if (b.attacksOut.length) a.receiveGarbage(b.attacksOut);
       if (a.gameOver || b.gameOver) {
         this.finished = true;
         this.winner = a.gameOver && b.gameOver ? -1 : a.gameOver ? 1 : 0;

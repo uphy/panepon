@@ -28,7 +28,7 @@ describe("ビックリパネルの攻撃", () => {
     const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
     b.setColumns([[SHOCK_KIND], [SHOCK_KIND], [1], [SHOCK_KIND], [2], [3]]);
     moveCursor(b, 2, 0);
-    const events = press(b, { swap: true }, TIMING.swap + 2);
+    const events = press(b, { swap: true }, TIMING.swap + 2 + TIMING.garbageSendDelay);
     const m = matches(events);
     expect(m[0]?.panels).toBe(3);
     expect(b.score).toBe(30);
@@ -39,7 +39,7 @@ describe("ビックリパネルの攻撃", () => {
     const c = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
     c.setColumns([[0], [0], [1], [0]]);
     moveCursor(c, 2, 0);
-    const ev2 = press(c, { swap: true }, TIMING.swap + 2);
+    const ev2 = press(c, { swap: true }, TIMING.swap + 2 + TIMING.garbageSendDelay);
     expect(matches(ev2)[0]?.panels).toBe(3);
     expect(ev2.some((e) => e.type === "attack")).toBe(false);
   });
