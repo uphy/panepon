@@ -517,7 +517,7 @@ export class MenuScene extends Phaser.Scene {
     const lines = ["Line up 3 or more of the same panel to clear them.", "Chains and combos send garbage to the opponent.", ""];
     if (layout.touch) {
       lines.push("Swap: tap between two panels, or drag a panel sideways");
-      lines.push("Raise: hold outside the board, or press with 2 fingers");
+      lines.push("Raise: press the board with 2 fingers");
       lines.push("Pause: the ❚❚ button");
       // iPhone の Safari は Fullscreen API を使えない。ホーム画面に追加すれば URL バーが消えることを案内する
       if (!fullscreen.supported && !fullscreen.standalone && fullscreen.isIOS) {
@@ -528,8 +528,7 @@ export class MenuScene extends Phaser.Scene {
       lines.push("P1: ←↑↓→ move   Z swap   X raise");
       lines.push("P2: WASD move   F swap   H raise");
       lines.push("Gamepad: D-pad / stick move   A,B swap   L,R raise");
-      lines.push("Mouse: click between two panels, or drag a panel sideways.");
-      lines.push("       Hold outside the board to raise");
+      lines.push("Mouse: click between two panels, or drag a panel sideways");
       lines.push("");
       lines.push("P pause   R restart   Esc menu   M mute   V vibration");
     }

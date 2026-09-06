@@ -30,16 +30,15 @@ interface Drag {
  *   入れ替えは1つずつ出し、前の入れ替えが終わってパネルが静止してから次を出す。静止した瞬間に揃い判定が
  *   入るので、途中で揃えばそこで消える（原作どおり。指を離すまで運び続けることはできない）。
  *   入れ替え先の下が空なら、原作どおりそこで落ちる（ドラッグはそこで終わり、谷を越えては運べない）
- * - 盤面の外を押している間: 手動せり上げ（GameScene が盤面外の指を振り分けて raisePointers に入れる）
- * - 盤面を2本の指で押している間: 手動せり上げ。縦持ちで盤面が画面幅いっぱいのときに、盤面の外を探さなくて済む
+ * - 盤面を2本の指で押している間: 手動せり上げ。盤面の外を押す操作は誤タップが多かったので外した
  *
  * 操作はキューに積み、poll() が1フレームに1つずつ取り出す。
  */
 export class TouchInput {
   private queue: Input[] = [];
   private readonly drags = new Map<number, Drag>();
-  /** 盤面の外を押してせり上げている指。 */
-  readonly raisePointers = new Set<number>();
+  /** せり上げている指（盤面を2本以上で押しているとき）。 */
+  private readonly raisePointers = new Set<number>();
 
   /** 盤面の左上の論理座標と拡大率。BoardView.place() と同じ値を渡す。 */
   ox = 0;

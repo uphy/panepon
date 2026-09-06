@@ -45,7 +45,7 @@ export class Button extends Phaser.GameObjects.Container {
     this.on("pointerover", () => this.bg.setFillStyle(this.selected ? SELECTED_BG : 0x3e3e56));
     this.on("pointerout", () => this.bg.setFillStyle(this.selected ? SELECTED_BG : this.baseColor));
     this.on("pointerdown", (_p?: Phaser.Input.Pointer, _x?: number, _y?: number, event?: Phaser.Types.Input.EventData) => {
-      // 下にある「盤面の外を押すとせり上げ」「タップで再開」に伝えない
+      // 下にある「タップで再開」に伝えない
       event?.stopPropagation();
       this.bg.setFillStyle(0x50506c);
       onPress();

@@ -99,24 +99,16 @@ export class GameScene extends Phaser.Scene {
       this.touches.push(t);
       this.inputs[i].touch = t;
     });
-    // 盤面の外を押している間は手動せり上げ。対戦では左右どちらの盤面に近いかで振り分ける。
-    // 盤面の下に薄い矢印を出し、押している間だけ明るくする。
+    // 手動せり上げ中（2本指・キー・ゲームパッド）だけ明るくなる矢印を盤面の下に出す。
+    // 盤面の外を押してせり上げる操作は、誤タップが多かったので外した
     this.raiseHints = boards.map((_, i) =>
       this.add
         .text(0, 0, "▲ ▲ ▲", { fontFamily: FONT, fontSize: "16px", color: "#3a3a4c" })
         .setOrigin(0.5)
         .setVisible(Boolean(this.inputs[i]) && this.mode !== "puzzle"),
     );
-    this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      if (this.ended) return;
-      if (this.touches.some((t) => t.cellAt(p.worldX, p.worldY))) return;
-      if (this.hintText.visible && p.worldY > this.layout.height - 22) return; // 画面下端のキー操作の案内
-      let nearest = 0;
-      if (this.touches.length === 2) nearest = p.worldX < this.layout.width / 2 ? 0 : 1;
-      this.touches[nearest]?.raisePointers.add(p.id);
-    });
 
-    // 画面上のポーズボタン。ボタンは pointerdown を止めるので、せり上げにはならない
+    // 画面上のポーズボタン
     this.pauseButton = new Button(this, 0, 0, "❚❚", () => this.togglePause(), { minWidth: 44, minHeight: 30, fontSize: 13 }).setDepth(5);
 
     // ポーズ画面。暗幕をタップしても再開する。ボタンで やり直し・音・振動・メニュー
