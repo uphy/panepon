@@ -89,6 +89,8 @@ export class Board {
   events: BoardEvent[] = [];
   readonly garbage = new Map<number, GarbageBlock>();
   readonly stats = { combos: 0, chains: 0, manualRows: 0, shockSpawned: 0, shockCleared: 0 };
+  /** せり上がって行が追加された回数。追加のたびに全パネルの段（y）が1つ増える。 */
+  risenRows = 0;
 
   private nextGarbageId = 1;
   private readonly rng: Rng;
@@ -890,6 +892,7 @@ export class Board {
     this.cells[0] = this.nextRow.map((k) => panelCell(k));
     for (const g of this.garbage.values()) g.y++;
     this.cursor.y = Math.min(ROWS - 1, this.cursor.y + 1);
+    this.risenRows++;
     this.nextRow = this.generateRow();
   }
 

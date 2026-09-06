@@ -115,6 +115,31 @@ test("ドラッグしたパネルは、入れ替え先の下が空ならそこ�
   expect(after).toEqual({ landed: 1, origin: -1, far: 3, farther: 2 });
 });
 
+test("ドラッグの途中で揃ったパネルはその場で消え、先へは運べない（原作どおり）", async ({ page }) => {
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
+  await page.waitForTimeout(200);
+  // 最下段 [1,0,1,1,2,3]。(0,0) の柄1を右へ1マス動かすと x=1..3 で柄1が3枚揃う
+  await page.evaluate(() => {
+    const b = (window as any).__swaprise.game.boards[0];
+    b.setColumns([[1], [0], [1], [1], [2], [3]]);
+  });
+  await page.waitForTimeout(100);
+  const from = await cellCenter(page, 0, 0);
+  const to = await cellCenter(page, 4, 0);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  // 4マスぶんを一気に引く。途中の x=1 で揃うので、そこで消えて x=4 までは運ばれない
+  await page.mouse.move(to.x, from.y, { steps: 8 });
+  await page.waitForTimeout(600);
+  await page.mouse.up();
+  const after = await page.evaluate(() => {
+    const b = (window as any).__swaprise.game.boards[0];
+    return { cleared: b.panelsCleared, x4: b.cell(4, 0).kind, x5: b.cell(5, 0).kind, x0: b.cell(0, 0).kind };
+  });
+  expect(after).toEqual({ cleared: 3, x4: 2, x5: 3, x0: 0 });
+});
+
 test.describe("スマホ縦画面", () => {
   const pixel = devices["Pixel 7"];
   test.use({

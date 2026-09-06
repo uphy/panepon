@@ -18,6 +18,8 @@ interface Drag {
   /** 掴んだのがパネルか（空マスを掴んで隣を引き寄せる操作もある）。 */
   panel: boolean;
   mode: DragMode;
+  /** 指が越えたマスのうち、まだ入れ替えを出していない数。右向きが正。 */
+  pending: number;
 }
 
 /**
@@ -25,6 +27,8 @@ interface Drag {
  *
  * - 2枚の境目をタップ: その2枚を入れ替える（1回で入れ替わる）
  * - パネルを横にドラッグ: その方向の隣と入れ替える。指を離さず引き続ければ連続で入れ替わる。
+ *   入れ替えは1つずつ出し、前の入れ替えが終わってパネルが静止してから次を出す。静止した瞬間に揃い判定が
+ *   入るので、途中で揃えばそこで消える（原作どおり。指を離すまで運び続けることはできない）。
  *   入れ替え先の下が空なら、原作どおりそこで落ちる（ドラッグはそこで終わり、谷を越えては運べない）
  * - 盤面の外を押している間: 手動せり上げ（GameScene が盤面外の指を振り分けて raisePointers に入れる）
  * - 盤面を2本の指で押している間: 手動せり上げ。縦持ちで盤面が画面幅いっぱいのときに、盤面の外を探さなくて済む
@@ -110,7 +114,7 @@ export class TouchInput {
       return;
     }
     const panel = !isEmptyCell(this.board.cell(cell.x, cell.y));
-    this.drags.set(p.id, { startX: p.worldX, startY: p.worldY, cellX: cell.x, cellY: cell.y, panel, mode: "pending" });
+    this.drags.set(p.id, { startX: p.worldX, startY: p.worldY, cellX: cell.x, cellY: cell.y, panel, mode: "pending", pending: 0 });
   }
 
   private onMove(p: Phaser.Input.Pointer): void {
@@ -119,16 +123,50 @@ export class TouchInput {
     const dx = p.worldX - d.startX;
     if (Math.abs(dx) < this.cell * SWIPE_RATIO) return;
     const dir = dx > 0 ? 1 : -1;
-    const target = d.cellX + dir;
-    if (target < 0 || target >= COLS) return;
-    const left = dir > 0 ? d.cellX : target;
-    // 掴んでいるパネルの現在の高さで入れ替える（せり上がりで段がずれても追従する）
-    this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false, cursorTo: { x: left, y: d.cellY } });
-    d.cellX = target;
+    // 越えたマスは数えるだけにして、入れ替えは advanceDrags() が盤面の状態を見ながら1つずつ出す
+    const projected = d.cellX + d.pending + dir;
+    if (projected < 0 || projected >= COLS) return;
+    d.pending += dir;
     d.startX += dir * this.cell;
     d.mode = "swipe";
-    // 入れ替え先の下が空なら、パネルはそこで落ちる。ドラッグはここで終える
-    if (d.panel && d.cellY > 0 && isEmptyCell(this.board.cell(target, d.cellY - 1))) this.drags.delete(p.id);
+  }
+
+  /** 最後に見たせり上がりの行数。ドラッグ中のパネルの段を追従させる。 */
+  private lastRisen = 0;
+
+  /**
+   * ドラッグの溜まった移動を入れ替えにする。毎 tick の poll() から呼ぶ。
+   * 掴んでいるパネルが入れ替えの途中なら待ち、静止していれば次の1マスを出す。
+   * 揃って消え始めた・落ち始めた・いなくなったパネルはそこでドラッグを終える。
+   */
+  private advanceDrags(): void {
+    const risen = this.board.risenRows;
+    if (risen !== this.lastRisen) {
+      for (const d of this.drags.values()) d.cellY = Math.min(ROWS - 1, d.cellY + risen - this.lastRisen);
+      this.lastRisen = risen;
+    }
+    for (const [id, d] of this.drags) {
+      if (d.pending === 0) continue;
+      const here = this.board.cell(d.cellX, d.cellY);
+      if (d.panel) {
+        if (isEmptyCell(here) || here.state === "matched" || here.state === "popped" || here.state === "falling") {
+          this.drags.delete(id);
+          continue;
+        }
+        if (here.state === "swapping") continue;
+      }
+      const dir = d.pending > 0 ? 1 : -1;
+      const target = d.cellX + dir;
+      const there = this.board.cell(target, d.cellY);
+      if (!d.panel && !isEmptyCell(there) && there.state === "swapping") continue;
+      const left = dir > 0 ? d.cellX : target;
+      // 掴んでいるパネルの現在の位置で入れ替える
+      this.queue.push({ moveX: 0, moveY: 0, swap: true, raise: false, cursorTo: { x: left, y: d.cellY } });
+      d.cellX = target;
+      d.pending -= dir;
+      // 入れ替え先の下が空なら、パネルはそこで落ちる。ドラッグはここで終える
+      if (d.panel && d.cellY > 0 && isEmptyCell(this.board.cell(target, d.cellY - 1))) this.drags.delete(id);
+    }
   }
 
   private onUp(p: Phaser.Input.Pointer): void {
@@ -148,6 +186,7 @@ export class TouchInput {
 
   /** キューの先頭を1つ取り出す。何もなければ null。せり上げの状態は毎回返す。 */
   poll(): { action: Input | null; raise: boolean } {
+    this.advanceDrags();
     return { action: this.queue.shift() ?? null, raise: this.raising };
   }
 }
