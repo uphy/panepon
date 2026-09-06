@@ -9,10 +9,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:balance": "vitest run -c vitest.balance.config.ts",
     "e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "deploy:redirect": "wrangler deploy -c redirect/wrangler.jsonc",
-    "puzzles": "esbuild tools/make-puzzles.ts --bundle --platform=node --format=esm --log-level=warning | node --input-type=module -"
+    "puzzles": "esbuild tools/make-puzzles.ts --bundle --platform=node --format=esm --log-level=warning | node --input-type=module -",
+    "sim": "sh tools/sim/run.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

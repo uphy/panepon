@@ -2,10 +2,14 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+// worktree を並べて開いてもポートがぶつからないよう、環境変数で変えられるようにする（既定は 5173 / 4173）
+const DEV_PORT = Number(process.env.DEV_PORT) || 5173;
+const PREVIEW_PORT = Number(process.env.PREVIEW_PORT) || 4173;
+
 export default defineConfig({
   base: "./",
-  server: { port: 5173, strictPort: true },
-  preview: { port: 4173, strictPort: true },
+  server: { port: DEV_PORT, strictPort: true },
+  preview: { port: PREVIEW_PORT, strictPort: true },
   plugins: [
     // ホーム画面に追加してオフラインでも開けるようにする。Service Worker はビルド成果物を丸ごと precache する
     VitePWA({

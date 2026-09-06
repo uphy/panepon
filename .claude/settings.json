@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test*)",
+      "Bash(pnpm e2e*)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm build)",
+      "Bash(pnpm sim *)",
+      "Bash(pnpm puzzles)",
+      "Bash(pnpm exec playwright test*)",
+      "Bash(pnpm exec vitest run*)",
+      "Bash(pnpm exec tsc --noEmit)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push origin *)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(gh run watch*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(gh repo delete*)",
+      "Bash(gh repo rename*)",
+      "Bash(wrangler delete*)",
+      "Bash(pnpm exec wrangler delete*)",
+      "Bash(pnpm deploy:redirect)",
+      "Bash(pnpm exec wrangler deploy*)"
+    ]
+  }
+}
