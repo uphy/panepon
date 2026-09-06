@@ -176,7 +176,14 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // ビルド識別子（日付と commit）。スマホで今どの版が動いているかを確かめるため、左下に小さく出す
-    this.add.text(6, H - 4, __BUILD_ID__, { fontFamily: FONT, fontSize: "9px", color: "#4a4a60" }).setOrigin(0, 1).setName("build");
+    const buildText = this.add.text(6, H - 4, __BUILD_ID__, { fontFamily: FONT, fontSize: "9px", color: "#4a4a60" }).setOrigin(0, 1).setName("build");
+    this.add
+      .text(6 + buildText.width + 8, H - 4, "GitHub", { fontFamily: FONT, fontSize: "9px", color: "#6a6a90" })
+      .setOrigin(0, 1)
+      .setPadding(0, 6, 0, 6)
+      .setInteractive({ useHandCursor: true })
+      .setName("github-link")
+      .on("pointerdown", () => window.open("https://github.com/uphy/swaprise", "_blank", "noopener"));
 
     // 前回遊んだモードにカーソルを置く
     const last = loadLastMode();
