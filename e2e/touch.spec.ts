@@ -20,7 +20,7 @@ async function cellCenter(page: Page, x: number, y: number): Promise<{ x: number
   );
 }
 
-/** 盤面のすぐ下（盤面の外）の画面座標。ここを押してもせり上がらないことを確かめるのに使う。 */
+/** 盤面のすぐ下の左端（盤面の外で、▲ ▲ ▲ のボタンからも外れた余白）の画面座標。ここを押してもせり上がらないことを確かめるのに使う。 */
 async function belowBoard(page: Page): Promise<{ x: number; y: number }> {
   return page.evaluate(() => {
     const p = (window as any).__swaprise;
@@ -29,7 +29,19 @@ async function belowBoard(page: Page): Promise<{ x: number; y: number }> {
     const rect = canvas.getBoundingClientRect();
     const scaleX = rect.width / p.layout.width;
     const scaleY = rect.height / p.layout.height;
-    return { x: rect.left + (t.ox + 96) * scaleX, y: rect.top + (t.oy + 12 * 32 + 40) * scaleY };
+    return { x: rect.left + (t.ox + 8) * scaleX, y: rect.top + (t.oy + 12 * 32 + 40) * scaleY };
+  });
+}
+
+/** 盤面の下の「▲ ▲ ▲」ボタンの画面座標。 */
+async function raiseButton(page: Page): Promise<{ x: number; y: number }> {
+  return page.evaluate(() => {
+    const p = (window as any).__swaprise;
+    const h = p.scene.raiseHints[0];
+    const rect = document.querySelector("canvas")!.getBoundingClientRect();
+    const scaleX = rect.width / p.layout.width;
+    const scaleY = rect.height / p.layout.height;
+    return { x: rect.left + h.x * scaleX, y: rect.top + h.y * scaleY };
   });
 }
 
@@ -43,7 +55,7 @@ function kinds(page: Page, x1: number, x2: number, y: number): Promise<number[]>
   );
 }
 
-test("マウス: クリックで入れ替え、ドラッグで入れ替え。盤面の外を押してもせり上がらない", async ({ page }) => {
+test("マウス: クリックで入れ替え、ドラッグで入れ替え。▲ ▲ ▲ を押している間はせり上がり、盤面の外の余白を押してもせり上がらない", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
@@ -69,22 +81,34 @@ test("マウス: クリックで入れ替え、ドラッグで入れ替え。盤
   const after = await kinds(page, 3, 4, 0);
   expect(after).toEqual([before[1], before[0]]);
 
-  // 盤面の外（下の余白）を押してもせり上がらない。誤タップが多かったので、せり上げは2本指・キー・ゲームパッドだけ
+  // 盤面の下の ▲ ▲ ▲ を押している間はせり上がり、離すと止まる
   await page.evaluate(() => {
     const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
   });
   await page.waitForTimeout(200);
+  const manualRows = () => page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows as number);
+  const raising = () => page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising as boolean);
+  const button = await raiseButton(page);
+  const rowsBeforeButton = await manualRows();
+  await page.mouse.move(button.x, button.y);
+  await page.mouse.down();
+  await page.waitForFunction((n) => (window as any).__swaprise.game.boards[0].stats.manualRows > n, rowsBeforeButton);
+  expect(await raising()).toBe(true);
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  expect(await raising()).toBe(false);
+
+  // 盤面の外の余白（ボタンから外れた所）を押してもせり上がらない。誤タップが多かったので、余白のせり上げは外した
   const below = await belowBoard(page);
-  const rowsBefore = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
+  const rowsBefore = await manualRows();
   await page.mouse.move(below.x, below.y);
   await page.mouse.down();
   await page.waitForTimeout(500);
-  const raising = await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising);
+  const raisingBelow = await raising();
   await page.mouse.up();
-  expect(raising).toBe(false);
-  const rowsAfter = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
-  expect(rowsAfter).toBe(rowsBefore);
+  expect(raisingBelow).toBe(false);
+  expect(await manualRows()).toBe(rowsBefore);
 });
 
 test("ドラッグしたパネルは、入れ替え先の下が空ならそこで落ち、谷を越えて運べない", async ({ page }) => {

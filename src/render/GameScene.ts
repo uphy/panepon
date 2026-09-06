@@ -99,14 +99,22 @@ export class GameScene extends Phaser.Scene {
       this.touches.push(t);
       this.inputs[i].touch = t;
     });
-    // 手動せり上げ中（2本指・キー・ゲームパッド）だけ明るくなる矢印を盤面の下に出す。
-    // 盤面の外を押してせり上げる操作は、誤タップが多かったので外した
-    this.raiseHints = boards.map((_, i) =>
-      this.add
+    // 盤面の下の「▲ ▲ ▲」。押している間は手動せり上げで、せり上げ中（ボタン・2本指・キー・ゲームパッド）は明るくなる。
+    // 当たり判定は余白（padding）で指の大きさ（44dp 以上）まで広げる。盤面の外の余白ならどこでもせり上がる操作は
+    // 誤タップが多かったので外してあり、押せるのはこのボタンの範囲だけ
+    this.raiseHints = boards.map((_, i) => {
+      const hint = this.add
         .text(0, 0, "▲ ▲ ▲", { fontFamily: FONT, fontSize: "16px", color: "#3a3a4c" })
+        .setPadding(30, 14)
         .setOrigin(0.5)
-        .setVisible(Boolean(this.inputs[i]) && this.mode !== "puzzle"),
-    );
+        .setVisible(Boolean(this.inputs[i]) && this.mode !== "puzzle");
+      hint.setInteractive({ useHandCursor: true });
+      hint.on("pointerdown", (p: Phaser.Input.Pointer) => {
+        if (this.ended || this.paused) return;
+        this.touches[i]?.holdRaise(p.id);
+      });
+      return hint;
+    });
 
     // 画面上のポーズボタン
     this.pauseButton = new Button(this, 0, 0, "❚❚", () => this.togglePause(), { minWidth: 44, minHeight: 30, fontSize: 13 }).setDepth(5);

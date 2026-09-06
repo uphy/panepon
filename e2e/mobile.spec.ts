@@ -173,6 +173,48 @@ test("盤面を2本指で押している間はせり上げ。離すと止まる"
   expect(bottomAfter).toEqual(bottomBefore);
 });
 
+test("盤面の下の ▲ ▲ ▲ を1本指で押している間はせり上げ。離すと止まる。ボタンの脇の余白では せり上がらない", async ({ page }) => {
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
+  await page.waitForTimeout(200);
+  await page.evaluate(() => {
+    (window as any).__swaprise.game.boards[0].setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
+  });
+  const hint = await page.evaluate(() => {
+    const h = (window as any).__swaprise.scene.raiseHints[0];
+    return { x: h.x, y: h.y, w: h.width, h: h.height };
+  });
+  // 当たり判定は指で押せる大きさ（44dp 以上）
+  expect(hint.w).toBeGreaterThanOrEqual(44);
+  expect(hint.h).toBeGreaterThanOrEqual(44);
+  const manualRows = () => page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows as number);
+  const raising = () => page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising as boolean);
+  const cdp = await page.context().newCDPSession(page);
+
+  const at = await toScreen(page, hint.x, hint.y);
+  const rowsBefore = await manualRows();
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: at.x, y: at.y, id: 0 }] });
+  await page.waitForFunction((n) => (window as any).__swaprise.game.boards[0].stats.manualRows > n, rowsBefore);
+  expect(await raising()).toBe(true);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(100);
+  expect(await raising()).toBe(false);
+
+  // ボタンの脇（盤面の下の左端）は余白なので、押してもせり上がらない
+  const view = await page.evaluate(() => {
+    const v = (window as any).__swaprise.scene.views[0];
+    return { ox: v.ox };
+  });
+  const beside = await toScreen(page, view.ox + 8, hint.y);
+  const rowsBeside = await manualRows();
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: beside.x, y: beside.y, id: 0 }] });
+  await page.waitForTimeout(500);
+  const raisingBeside = await raising();
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  expect(raisingBeside).toBe(false);
+  expect(await manualRows()).toBe(rowsBeside);
+});
+
 test.describe("iPhone 14", () => {
   const iphone = devices["iPhone 14"];
   test.use({
