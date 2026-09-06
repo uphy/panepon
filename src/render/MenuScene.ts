@@ -175,6 +175,9 @@ export class MenuScene extends Phaser.Scene {
       this.tools.push(b);
     });
 
+    // ビルド識別子（日付と commit）。スマホで今どの版が動いているかを確かめるため、左下に小さく出す
+    this.add.text(6, H - 4, __BUILD_ID__, { fontFamily: FONT, fontSize: "9px", color: "#4a4a60" }).setOrigin(0, 1).setName("build");
+
     // 前回遊んだモードにカーソルを置く
     const last = loadLastMode();
     this.level = "top";

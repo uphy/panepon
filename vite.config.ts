@@ -1,6 +1,18 @@
 /// <reference types="vitest/config" />
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+
+/** ビルド識別子。メニューの隅に出して、スマホで「今どの版を触っているか」を確かめられるようにする。 */
+function buildId(): string {
+  const day = new Date().toISOString().slice(0, 10);
+  try {
+    const hash = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    return `${day} ${hash}`;
+  } catch {
+    return `${day} dev`;
+  }
+}
 
 // worktree を並べて開いてもポートがぶつからないよう、環境変数で変えられるようにする（既定は 5173 / 4173）
 const DEV_PORT = Number(process.env.DEV_PORT) || 5173;
@@ -8,6 +20,7 @@ const PREVIEW_PORT = Number(process.env.PREVIEW_PORT) || 4173;
 
 export default defineConfig({
   base: "./",
+  define: { __BUILD_ID__: JSON.stringify(buildId()) },
   server: { port: DEV_PORT, strictPort: true },
   preview: { port: PREVIEW_PORT, strictPort: true },
   plugins: [
