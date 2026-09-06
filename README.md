@@ -122,4 +122,8 @@ tests/core/     vitest によるロジックのテスト（ランダム入力の
 e2e/            Playwright によるブラウザ動作確認とスクリーンショット
 ```
 
+## 配信
+
+main への push で GitHub Actions が Cloudflare Workers の `swaprise` にデプロイする（`wrangler.jsonc`）。旧名称の URL（`panepon.*.workers.dev`）には `redirect/` の転送用 Worker を置いていて、新 URL へ 301 で飛ばす。転送用 Worker は自動デプロイの対象外なので、変えたら `pnpm deploy:redirect` で手動で上げる。
+
 タイミングは `src/core/constants.ts` の `TIMING` にフレーム数でまとめてあり、手触りの調整はここを変える。消去の点滅・柄を見せる時間・1枚ずつ消える間隔・落下前の猶予は `clearTiming(level)` でスピードレベルに応じて短くなる（レベル1が最長、レベル50以上で最短）。

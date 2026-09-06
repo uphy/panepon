@@ -1,0 +1,8 @@
+// 旧名称の URL（panepon.*.workers.dev）に置く転送用の Worker。中身は worker.js を参照。
+// デプロイ: pnpm deploy:redirect
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "panepon",
+  "main": "./worker.js",
+  "compatibility_date": "2026-09-01"
+}
