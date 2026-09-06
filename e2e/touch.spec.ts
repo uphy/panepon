@@ -20,7 +20,7 @@ async function cellCenter(page: Page, x: number, y: number): Promise<{ x: number
   );
 }
 
-/** 盤面のすぐ下（盤面の外）の画面座標。ここを押し続けるとせり上げ。 */
+/** 盤面のすぐ下（盤面の外）の画面座標。ここを押してもせり上がらないことを確かめるのに使う。 */
 async function belowBoard(page: Page): Promise<{ x: number; y: number }> {
   return page.evaluate(() => {
     const p = (window as any).__swaprise;
@@ -43,7 +43,7 @@ function kinds(page: Page, x1: number, x2: number, y: number): Promise<number[]>
   );
 }
 
-test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤面の外を押してせり上げ", async ({ page }) => {
+test("マウス: クリックで入れ替え、ドラッグで入れ替え。盤面の外を押してもせり上がらない", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
@@ -69,7 +69,7 @@ test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤
   const after = await kinds(page, 3, 4, 0);
   expect(after).toEqual([before[1], before[0]]);
 
-  // 消去処理中はせり上げが止まるので、揃いのない静かな盤面に置き換えてから盤面の外を押す
+  // 盤面の外（下の余白）を押してもせり上がらない。誤タップが多かったので、せり上げは2本指・キー・ゲームパッドだけ
   await page.evaluate(() => {
     const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
@@ -82,11 +82,9 @@ test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤
   await page.waitForTimeout(500);
   const raising = await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising);
   await page.mouse.up();
-  expect(raising).toBe(true);
+  expect(raising).toBe(false);
   const rowsAfter = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
-  expect(rowsAfter).toBeGreaterThan(rowsBefore);
-  const released = await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising);
-  expect(released).toBe(false);
+  expect(rowsAfter).toBe(rowsBefore);
 });
 
 test("ドラッグしたパネルは、入れ替え先の下が空ならそこで落ち、谷を越えて運べない", async ({ page }) => {
@@ -189,7 +187,7 @@ test.describe("スマホ縦画面", () => {
     const after = await kinds(page, 2, 3, 0);
     expect(after).toEqual([before[1], before[0]]);
 
-    // 盤面の下をタッチで押し続けるとせり上げ
+    // 盤面の下を1本の指で押し続けてもせり上がらない（2本指のせり上げは mobile.spec で確かめる）
     await page.waitForTimeout(1500);
     const below = await belowBoard(page);
     const rowsBefore = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
@@ -197,7 +195,7 @@ test.describe("スマホ縦画面", () => {
     await page.waitForTimeout(500);
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     const rowsAfter = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
-    expect(rowsAfter).toBeGreaterThan(rowsBefore);
+    expect(rowsAfter).toBe(rowsBefore);
 
     await page.goto("/?mode=versus&seed=7&bgm=0&countdown=0");
     await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));

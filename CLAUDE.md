@@ -35,8 +35,11 @@ pnpm puzzles          # パズル面の生成
 - 盤面は `board.setColumns([[列0の下から], [列1], ...])` で組む。揃いのない静かな盤面が要るときは `[[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]`
 - 挙動を直したときは、修正前のコードで新しいテストが落ちることを確認してからコミットする
 
-## git
+## git と PR
 
-- コミットメッセージは日本語で、何をなぜ変えたかを1つの文にまとめる（既存のログに合わせる）
-- 別のエージェントや人が同じ作業ツリーを触っていることがある。コミットは `git add -A` ではなく、自分が変えたファイルを名指しで add する。`git status` に自分の知らない変更があれば、それは含めずにユーザーへ伝える
-- main への push で Cloudflare Workers にデプロイされる（`.github/workflows/deploy.yml`）。旧 URL の転送用 Worker（`redirect/`）は `pnpm deploy:redirect` で手動デプロイ。Worker の削除とリポジトリ名の変更はしない
+- main は保護されていて直接 push できない。ブランチを切り、PR を作り、CI（`.github/workflows/ci.yml`）が通ったら `gh pr merge --rebase --delete-branch` で merge する。merge で main に入ると Cloudflare Workers にデプロイされる（`deploy.yml`）
+- 並行して作業するときは worktree を使い、1 worktree に 1 セッション。`git worktree add ../swaprise-<topic> -b <topic>` のあと `pnpm install`。e2e は `PREVIEW_PORT=4174 pnpm e2e` のようにポートをずらす
+- PR には CI がプレビュー URL をコメントする（Cloudflare の versions upload）。タッチの手触りやレイアウトを変えたときは、merge 前にその URL をスマホで開いて確かめる。メニュー左下のビルド識別子（日付と commit）で、開いている版を確認できる
+- コミットメッセージは日本語で、何をなぜ変えたかを1つの文にまとめる（既存のログに合わせる）。PR の本文は、何をなぜ変えたか・確認したことを書く
+- 同じ作業ツリーを別のエージェントや人が触っていることがある。コミットは `git add -A` ではなく、自分が変えたファイルを名指しで add する。`git status` に自分の知らない変更があれば、それは含めずにユーザーへ伝える
+- 旧 URL の転送用 Worker（`redirect/`）は `pnpm deploy:redirect` で手動デプロイ。Worker の削除とリポジトリ名の変更はしない

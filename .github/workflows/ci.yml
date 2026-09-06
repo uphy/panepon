@@ -68,3 +68,47 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:balance
+
+  # PR ごとにプレビュー URL を出す。Cloudflare Workers の versions upload は本番の URL を変えずに、その版だけの URL を返す。
+  # スマホで実機確認してから merge するために使う。URL は PR のコメントに書き、同じコメントを更新する
+  preview:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: プレビュー版をアップロード
+        id: upload
+        run: |
+          pnpm exec wrangler versions upload --message "PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }}" | tee upload.log
+          url=$(grep -o 'https://[a-z0-9.-]*workers\.dev' upload.log | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: PR にプレビュー URL をコメント
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.upload.outputs.url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          body="<!-- preview-url -->プレビュー: ${URL}
+          （commit ${SHA:0:7} の版。本番の URL は変わらない）"
+          existing=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | startswith("<!-- preview-url -->")) | .id' | head -1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$existing" -f body="$body" > /dev/null
+          else
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$body"
+          fi
+
