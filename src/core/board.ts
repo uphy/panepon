@@ -802,10 +802,11 @@ export class Board {
     }
 
     // ビックリパネル同士の消去は灰色の板を送る（3個消しでも送れる）。通常パネルの同時消しは幅 n-1 の板。
+    // 連鎖の板はここでは送らない。原作どおり1つの連鎖につき1枚で、連鎖が終わったときに最終連鎖数で送る（updateChainEnd）
     const shockCount = list.filter(({ x, y }) => this.cells[y][x].kind === SHOCK_KIND).length;
     const normalCount = n - shockCount;
     this.stats.shockCleared += shockCount;
-    const attack = [...garbageFromCombo(normalCount), ...garbageFromShock(shockCount), ...garbageFromChain(chainNow)];
+    const attack = [...garbageFromCombo(normalCount), ...garbageFromShock(shockCount)];
     if (attack.length > 0) {
       this.attacksOut.push(...attack);
       this.emit({ type: "attack", garbage: attack });
@@ -857,6 +858,12 @@ export class Board {
         const cell = this.cells[r][c];
         if (isPanel(cell) && cell.chain) return;
       }
+    }
+    // 連鎖の板は連鎖が終わってから1枚だけ送る。段階ごとに送ると 7連鎖で 1+2+…+6=21段になり、相手が一瞬で負ける
+    const attack = garbageFromChain(this.chain);
+    if (attack.length > 0) {
+      this.attacksOut.push(...attack);
+      this.emit({ type: "attack", garbage: attack });
     }
     this.emit({ type: "chainEnd", chain: this.chain });
     this.chain = 1;

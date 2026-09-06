@@ -23,6 +23,32 @@ describe("おじゃまパネルの送り方", () => {
     expect(garbageFromChain(13)[0].height).toBe(12);
     expect(garbageFromChain(20)[0].height).toBe(12);
   });
+
+  it("連鎖の板は連鎖が終わったときに1枚だけ送る。途中の段階では送らない（原作どおり）", () => {
+    // 縦→縦→横の3連鎖ができる盤面（board.test の CHAIN3）。(0,4) の 4 を右の空白へ抜く
+    const b = new Board({ seed: 1, kinds: 6, initialHeight: 0, noRise: true });
+    b.setColumns([
+      [2, 1, 0, 0, 4, 0, 1, 1, 3],
+      [4, 3],
+      [4, 3],
+    ]);
+    b.cursor.x = 0;
+    b.cursor.y = 4;
+    const attacks: { frame: number; garbage: { width: number; height: number }[] }[] = [];
+    let chainEndFrame = -1;
+    b.tick({ ...NO_INPUT, swap: true });
+    for (let f = 0; f < 400; f++) {
+      b.tick(NO_INPUT);
+      for (const e of b.events) {
+        if (e.type === "attack") attacks.push({ frame: b.frame, garbage: e.garbage });
+        if (e.type === "chainEnd") chainEndFrame = b.frame;
+      }
+    }
+    expect(b.maxChain).toBe(3);
+    expect(chainEndFrame).toBeGreaterThan(0);
+    // 3枚消しの連鎖なので同時消しの板はなく、連鎖の板（幅6・厚さ2）が連鎖終了のフレームに1枚だけ
+    expect(attacks).toEqual([{ frame: chainEndFrame, garbage: [{ width: 6, height: 2, type: "normal" }] }]);
+  });
 });
 
 /**
