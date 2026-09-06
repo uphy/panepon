@@ -180,7 +180,6 @@ export class MenuScene extends Phaser.Scene {
     this.add
       .text(6 + buildText.width + 8, H - 4, "GitHub", { fontFamily: FONT, fontSize: "9px", color: "#6a6a90" })
       .setOrigin(0, 1)
-      .setPadding(0, 6, 0, 6)
       .setInteractive({ useHandCursor: true })
       .setName("github-link")
       .on("pointerdown", () => window.open("https://github.com/uphy/swaprise", "_blank", "noopener"));
