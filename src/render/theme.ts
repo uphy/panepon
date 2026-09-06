@@ -35,7 +35,7 @@ export function isTouchDevice(): boolean {
  * 画面の向きとモードから論理サイズを決める。Phaser の Scale.FIT がこれを実画面に収める。
  * 縦持ちのスマホでは盤面が画面幅いっぱいになるよう、論理幅を小さくする。
  */
-export function layoutFor(mode: "menu" | "endless" | "versus" | "cpu"): Layout {
+export function layoutFor(mode: "menu" | "endless" | "timeattack" | "versus" | "cpu"): Layout {
   const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
   const touch = isTouchDevice();
   if (portrait) {

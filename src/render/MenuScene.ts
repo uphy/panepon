@@ -16,6 +16,7 @@ interface MenuItem {
 
 const ITEMS: MenuItem[] = [
   { label: "1P  ENDLESS", mode: "endless" },
+  { label: "1P  TIME ATTACK", mode: "timeattack" },
   { label: "VS CPU  EASY", mode: "cpu", cpuLevel: "easy" },
   { label: "VS CPU  NORMAL", mode: "cpu", cpuLevel: "normal" },
   { label: "VS CPU  HARD", mode: "cpu", cpuLevel: "hard" },
@@ -38,7 +39,7 @@ export class MenuScene extends Phaser.Scene {
     // URL の ?mode= は最初の1回だけ効かせる。Esc でメニューに戻ったときに再び飛ばされないよう、ここで消す。
     const params = new URLSearchParams(location.search);
     const mode = params.get("mode");
-    if (mode === "endless" || mode === "versus" || mode === "cpu") {
+    if (mode === "endless" || mode === "timeattack" || mode === "versus" || mode === "cpu") {
       const cpu = params.get("cpu");
       const cpuLevel: CpuLevel = cpu === "easy" || cpu === "hard" ? cpu : "normal";
       params.delete("mode");
@@ -60,12 +61,12 @@ export class MenuScene extends Phaser.Scene {
 
     // 背の低い縦画面（Safari のツールバーがある iPhone など）では、縦の間隔を詰める
     const compact = layout.portrait && H < 560;
-    const titleY = layout.portrait ? (compact ? 46 : 70) : 56;
+    const titleY = layout.portrait ? (compact ? 40 : 64) : 56;
     this.add
       .text(cx, titleY, "PANEPON", { fontFamily: FONT, fontSize: layout.portrait ? "48px" : "56px", color: TEXT_COLOR, fontStyle: "bold" })
       .setOrigin(0.5);
     this.add
-      .text(cx, titleY + (compact ? 44 : 48), layout.portrait ? "Panel de Pon style puzzle" : "clone  -  Panel de Pon style action puzzle", {
+      .text(cx, titleY + (compact ? 40 : 46), layout.portrait ? "Panel de Pon style puzzle" : "clone  -  Panel de Pon style action puzzle", {
         fontFamily: FONT,
         fontSize: layout.portrait ? "13px" : "16px",
         color: "#9a9ab0",
@@ -73,12 +74,12 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     KIND_COLORS.forEach((_, k) => {
-      this.add.image(cx - 100 + k * 40, titleY + (compact ? 76 : 88), `panel-${k}`).setScale(1 / DPR);
+      this.add.image(cx - 100 + k * 40, titleY + (compact ? 70 : 84), `panel-${k}`).setScale(1 / DPR);
     });
 
-    const itemTop = titleY + (compact ? 116 : 134);
-    const itemGap = layout.portrait ? (compact ? 38 : 48) : 36;
-    const itemPad = layout.portrait ? (compact ? 6 : 8) : 4;
+    const itemTop = titleY + (compact ? 106 : layout.portrait ? 128 : 134);
+    const itemGap = layout.portrait ? (compact ? 34 : 42) : 34;
+    const itemPad = layout.portrait ? (compact ? 5 : 8) : 4;
     ITEMS.forEach((item, i) => {
       // 指で押す前提で、文字の上下に余白を取って当たり判定を高さ 32 論理px 以上にする
       const t = this.add
@@ -107,7 +108,7 @@ export class MenuScene extends Phaser.Scene {
     this.add
       .text(
         cx,
-        itemTop + (ITEMS.length - 1) * itemGap + (compact ? 20 : 26),
+        itemTop + (ITEMS.length - 1) * itemGap + (compact ? 16 : 22),
         [best ? `BEST ${String(best.score).padStart(6, "0")}   MAX CHAIN x${best.maxChain}` : "BEST ------", `VS CPU  ${cpuLine}`, "▸ RECORDS"].join("\n"),
         { fontFamily: FONT, fontSize: "12px", color: "#7a7a90", align: "center" },
       )
@@ -153,8 +154,14 @@ export class MenuScene extends Phaser.Scene {
       ).setName("vibration");
       toggles.push(t);
     }
-    const toggleY = H - (layout.touch ? 88 : 92);
-    toggles.forEach((b, i) => b.setPosition(cx + (i - (toggles.length - 1) / 2) * 132, toggleY));
+    if (layout.portrait) {
+      const toggleY = H - 88;
+      toggles.forEach((b, i) => b.setPosition(cx + (i - (toggles.length - 1) / 2) * 132, toggleY));
+    } else {
+      // 横長では記録の左右に置く
+      const toggleY = itemTop + (ITEMS.length - 1) * itemGap + 50;
+      toggles.forEach((b, i) => b.setPosition(cx + (i === 0 ? -300 : 300), toggleY));
+    }
     this.add
       .text(cx, H - 34, help.join("\n"), {
         fontFamily: FONT,
@@ -200,19 +207,26 @@ export class MenuScene extends Phaser.Scene {
     const W = layout.width;
     const H = layout.height;
     const hs = loadHighScores();
-    const lines = ["1P ENDLESS  TOP 5", ""];
-    if (hs.endless.length === 0) lines.push("no records yet");
-    hs.endless.forEach((e, i) => {
-      lines.push(`${i + 1}.  ${String(e.score).padStart(6, "0")}   x${String(e.maxChain).padEnd(2)}  ${e.date || "----------"}`);
-    });
-    lines.push("", "VS CPU");
+    const lines: string[] = [];
+    for (const [title, list] of [
+      ["1P ENDLESS  TOP 5", hs.endless],
+      ["1P TIME ATTACK 2:00  TOP 5", hs.timeattack],
+    ] as const) {
+      lines.push(title);
+      if (list.length === 0) lines.push("no records yet");
+      list.forEach((e, i) => {
+        lines.push(`${i + 1}.  ${String(e.score).padStart(6, "0")}   x${String(e.maxChain).padEnd(2)}  ${e.date || "----------"}`);
+      });
+      lines.push("");
+    }
+    lines.push("VS CPU");
     for (const l of ["easy", "normal", "hard"] as CpuLevel[]) {
       const r = hs.cpu[l];
       lines.push(`${l.toUpperCase().padEnd(7)} ${r.wins}W ${r.losses}L`);
     }
     const dim = this.add.rectangle(0, 0, W, H, 0x000000, 0.92).setOrigin(0).setInteractive();
     const body = this.add
-      .text(W / 2, H / 2 - 40, lines.join("\n"), { fontFamily: FONT, fontSize: "13px", color: TEXT_COLOR, align: "left", lineSpacing: 4 })
+      .text(W / 2, H / 2 - 40, lines.join("\n"), { fontFamily: FONT, fontSize: "12px", color: TEXT_COLOR, align: "left", lineSpacing: 3 })
       .setOrigin(0.5);
     const panel = this.add.container(0, 0, [dim, body]).setDepth(50).setName("records-list");
     const close = new Button(this, W / 2, H / 2 + body.height / 2 + 10, "CLOSE", () => panel.destroy(), { minWidth: 140, minHeight: 40 });

@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { Game, type CpuLevel, type GameMode, type Input, NO_INPUT } from "../core";
-import { recordCpuResult, recordEndless } from "./highscore";
+import { recordCpuResult, recordScore } from "./highscore";
 import { BoardView } from "./BoardView";
 import { P1_KEYS, P2_KEYS, PlayerInput } from "./input";
 import { audio } from "./shared";
@@ -54,7 +54,9 @@ export class GameScene extends Phaser.Scene {
     const seed = Number(params.get("seed")) || (Date.now() & 0xffffff);
     const speedLevel = Number(params.get("speed")) || 1;
     const shockMax = params.has("shock") ? Number(params.get("shock")) || 0 : undefined;
-    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel, shockMax });
+    // ?time=秒 でタイムアタックの制限時間を変える（e2e 用）
+    const timeLimitFrames = Number(params.get("time")) > 0 ? Math.round(Number(params.get("time")) * 60) : undefined;
+    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel, shockMax, timeLimitFrames });
     this.accumulator = 0;
     this.paused = false;
     this.ended = false;
@@ -70,7 +72,7 @@ export class GameScene extends Phaser.Scene {
 
     const boards = this.game_.boards;
     if (boards.length === 1) {
-      this.views.push(new BoardView(this, boards[0], "1P", true));
+      this.views.push(new BoardView(this, boards[0], "1P", true, this.game_.timeLimit));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
       this.vsText = null;
     } else {
@@ -385,6 +387,8 @@ export class GameScene extends Phaser.Scene {
     let text: string;
     if (this.mode === "endless") {
       text = `PANEPON  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
+    } else if (this.mode === "timeattack") {
+      text = `PANEPON  TIME ATTACK 2:00  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
     } else {
       const result = g.winner === 0 ? "WIN" : "LOSE";
       const foe = this.mode === "cpu" ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P";
@@ -398,8 +402,8 @@ export class GameScene extends Phaser.Scene {
     this.ended = true;
     this.pauseButton.setVisible(false);
     const g = this.game_;
-    // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音
-    const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" && g.winner === 0;
+    // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音。タイムアタックは時間切れなら完走の音
+    const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" ? g.winner === 0 : g.timeUp;
     if (humanWon) {
       audio.win();
       haptics.win();
@@ -421,11 +425,11 @@ export class GameScene extends Phaser.Scene {
         this.views[0].addToOverlay(share);
       }
     });
-    if (this.mode === "endless") {
+    if (this.mode === "endless" || this.mode === "timeattack") {
       const b = g.boards[0];
-      const rank = recordEndless(b.score, b.maxChain);
+      const rank = recordScore(this.mode, b.score, b.maxChain);
       const rankLine = rank === 1 ? "NEW RECORD!" : rank > 0 ? `RANK ${rank}` : "";
-      this.views[0].showOverlay("GAME OVER", `SCORE ${b.score}\nMAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n${rankLine}`);
+      this.views[0].showOverlay(g.timeUp ? "TIME UP" : "GAME OVER", `SCORE ${b.score}\nMAX CHAIN x${b.maxChain}\nCOMBOS ${b.stats.combos}  CHAINS ${b.stats.chains}\n${rankLine}`);
     } else {
       let recordLine = "";
       if (this.mode === "cpu" && g.winner >= 0) {

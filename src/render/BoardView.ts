@@ -58,6 +58,8 @@ export class BoardView {
     readonly board: Board,
     private readonly label: string,
     private readonly showLevel: boolean,
+    /** タイムアタックの制限時間（フレーム）。指定すると経過時間の代わりに残り時間を出す。 */
+    private readonly timeLimit: number | null = null,
   ) {
     this.root = scene.add.container(0, 0);
     this.frame = scene.add.rectangle(-4, -4, BOARD_W + 8, BOARD_H + 8, 0x3a3a4c).setOrigin(0);
@@ -251,10 +253,18 @@ export class BoardView {
     this.frame.setFillStyle(b.panic && blink ? 0xaa3344 : 0x3a3a4c);
 
     this.scoreText.setText(`${this.label}  ${String(b.score).padStart(6, "0")}`);
-    const elapsed = Math.max(0, Math.floor((this.scene.time.now - this.startTime) / 1000));
-    const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
-    const ss = String(elapsed % 60).padStart(2, "0");
+    let seconds: number;
+    if (this.timeLimit !== null) {
+      // 残り時間。ゲームのフレームで数えるので、ポーズ中は減らない
+      seconds = Math.ceil(Math.max(0, this.timeLimit - b.frame) / 60);
+    } else {
+      seconds = Math.max(0, Math.floor((this.scene.time.now - this.startTime) / 1000));
+    }
+    const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const ss = String(seconds % 60).padStart(2, "0");
     const parts = [`${mm}:${ss}`];
+    // 残り10秒を切ったら赤く
+    this.infoText.setColor(this.timeLimit !== null && seconds <= 10 ? "#ff5c6c" : "#9a9ab0");
     if (this.showLevel) parts.push(`SPEED ${b.level}`);
     parts.push(`MAX x${b.maxChain}`);
     this.infoText.setText(parts.join("   "));

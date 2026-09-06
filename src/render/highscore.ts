@@ -12,8 +12,12 @@ export interface CpuRecord {
   losses: number;
 }
 
+/** 得点を競う1人用モード。上位5件を別々に持つ。 */
+export type ScoreMode = "endless" | "timeattack";
+
 export interface HighScores {
   endless: ScoreEntry[];
+  timeattack: ScoreEntry[];
   cpu: Record<CpuLevel, CpuRecord>;
 }
 
@@ -23,6 +27,7 @@ const MAX_ENTRIES = 5;
 function empty(): HighScores {
   return {
     endless: [],
+    timeattack: [],
     cpu: {
       easy: { wins: 0, losses: 0 },
       normal: { wins: 0, losses: 0 },
@@ -48,8 +53,10 @@ export function loadHighScores(): HighScores {
     if (!raw) return empty();
     const parsed = JSON.parse(raw) as Partial<HighScores>;
     const base = empty();
-    if (Array.isArray(parsed.endless)) {
-      base.endless = parsed.endless
+    for (const mode of ["endless", "timeattack"] as ScoreMode[]) {
+      const list = parsed[mode];
+      if (!Array.isArray(list)) continue;
+      base[mode] = list
         .filter((e) => typeof e?.score === "number")
         .map((e) => ({ score: e.score, maxChain: e.maxChain ?? 1, date: e.date ?? "" }));
     }
@@ -76,18 +83,21 @@ function save(h: HighScores): void {
 }
 
 /**
- * エンドレスの結果を記録する。上位5件だけ残す。
+ * エンドレス・タイムアタックの結果を記録する。上位5件だけ残す。
  * 戻り値は順位（1始まり）。5位以内に入らなければ 0。
  */
-export function recordEndless(score: number, maxChain: number, now = new Date()): number {
+export function recordScore(mode: ScoreMode, score: number, maxChain: number, now = new Date()): number {
   const h = loadHighScores();
   const entry: ScoreEntry = { score, maxChain, date: now.toISOString().slice(0, 10) };
-  h.endless.push(entry);
-  h.endless.sort((a, b) => b.score - a.score || b.maxChain - a.maxChain);
-  const rank = h.endless.indexOf(entry) + 1;
-  h.endless = h.endless.slice(0, MAX_ENTRIES);
+  const list = [...h[mode], entry].sort((a, b) => b.score - a.score || b.maxChain - a.maxChain);
+  const rank = list.indexOf(entry) + 1;
+  h[mode] = list.slice(0, MAX_ENTRIES);
   save(h);
   return rank <= MAX_ENTRIES ? rank : 0;
+}
+
+export function recordEndless(score: number, maxChain: number, now = new Date()): number {
+  return recordScore("endless", score, maxChain, now);
 }
 
 /** CPU 対戦の勝敗を記録する。 */

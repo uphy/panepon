@@ -14,6 +14,8 @@ export const SHOCK_KIND = 6;
 export const DEFAULT_SHOCK_EVERY = 12;
 /** 対戦で1試合に出るビックリパネルの上限。超えると以後一切出ない。 */
 export const DEFAULT_SHOCK_MAX = 24;
+/** タイムアタックの制限時間（フレーム）。2分。 */
+export const TIME_ATTACK_FRAMES = 120 * 60;
 
 /** フレーム数ベースのタイミング（60fps想定）。 */
 export const TIMING = {
