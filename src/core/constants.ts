@@ -5,7 +5,7 @@ export const ROWS = 12;
 export const EXTRA_ROWS = 14;
 export const TOTAL_ROWS = ROWS + EXTRA_ROWS;
 
-/** 種類数。5種が既定、高難度で6種目（逆さんかく）が混ざる。 */
+/** 種類数。5種が既定、高難度で6種目（ばつ印）が混ざる。 */
 export const DEFAULT_KINDS = 5;
 export const MAX_KINDS = 6;
 /** ビックリパネル（対戦専用の「！」付き灰色パネル）の柄番号。通常の柄とは揃わない。 */
