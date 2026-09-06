@@ -9,6 +9,7 @@ import { TouchInput } from "./touch";
 import { applyLayout } from "./hidpi";
 import { Button } from "./ui";
 import { wakeLock } from "./wakelock";
+import { fullscreen } from "./fullscreen";
 import { canShare, shareText } from "./share";
 import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, type Layout, layoutFor, sameLayout } from "./theme";
 
@@ -324,6 +325,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
+    fullscreen.sync();
     this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
   }
 
@@ -359,6 +361,8 @@ export class GameScene extends Phaser.Scene {
       this.touches.forEach((t) => t.clear());
       this.accumulator = 0;
       audio.resume();
+      // 画面オフや戻る操作で全画面が解除されていたら、再開の操作の中で取り直す
+      fullscreen.sync();
     }
   }
 

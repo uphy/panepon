@@ -7,6 +7,7 @@ import { loadHighScores } from "./highscore";
 import { haptics } from "./haptics";
 import { DPR, applyLayout } from "./hidpi";
 import { Button } from "./ui";
+import { fullscreen } from "./fullscreen";
 
 interface MenuItem {
   label: string;
@@ -126,6 +127,25 @@ export class MenuScene extends Phaser.Scene {
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",
           "Mouse: click between two panels to swap them, or drag a panel sideways. Hold outside the board to raise",
         ];
+    // iPhone の Safari は Fullscreen API を使えない。ホーム画面に追加すれば URL バーが消えることを案内する
+    if (layout.touch && !fullscreen.supported && !fullscreen.standalone && fullscreen.isIOS) {
+      help.splice(0, 2, "Tap between panels or drag sideways to swap");
+      help.push("Full screen: Share ▸ Add to Home Screen");
+    }
+    // 全画面（Android Chrome など）。右上の小さなボタンで切り替える。standalone の PWA では不要なので出さない
+    if (fullscreen.supported && layout.touch) {
+      const fsLabel = (): string => (fullscreen.active ? "EXIT\nFULL" : "FULL\nSCREEN");
+      const fsBtn = new Button(this, W - 40, 26, fsLabel(), () => fullscreen.toggle(), { fontSize: 10, minWidth: 64, minHeight: 36 }).setName("fullscreen");
+      const onChange = (): void => {
+        fsBtn.setText(fsLabel());
+      };
+      document.addEventListener("fullscreenchange", onChange);
+      document.addEventListener("webkitfullscreenchange", onChange);
+      this.events.once("shutdown", () => {
+        document.removeEventListener("fullscreenchange", onChange);
+        document.removeEventListener("webkitfullscreenchange", onChange);
+      });
+    }
     // 音と振動の切り替え。振動は対応端末（Android など）でだけ出す
     const soundLabel = (): string => `SOUND: ${audio.muted ? "OFF" : "ON"}`;
     const soundBtn = new Button(
@@ -277,6 +297,8 @@ export class MenuScene extends Phaser.Scene {
   private select(): void {
     audio.start();
     audio.select();
+    // 全画面を望んでいれば、ゲーム開始の操作の中で取り直す（戻る操作や回転で解除されていることがある）
+    fullscreen.sync();
     const item = ITEMS[this.index];
     this.scene.start("game", { mode: item.mode, cpuLevel: item.cpuLevel });
   }

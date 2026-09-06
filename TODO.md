@@ -66,9 +66,9 @@
 
 - [x] 横持ちの 2P 対戦で盤面を左右の端に寄せる
   - 対応済み（`1bd5b4e`、未デプロイ時点の報告）。横持ちのスマホ用レイアウトで、盤面は左右 40 論理px（実画面 約39px）の位置。手がぶつからないよう、これ以上は Android の戻るジェスチャ領域（24dp）を踏まない範囲で寄せてある。実機で試して足りなければ `GameScene.place()` の `edge` を詰める
-- [ ] 上下のブラウザ UI（URL バー・メニューバー）を除いて使う
-  - Android Chrome は Fullscreen API（`documentElement.requestFullscreen()`）がユーザー操作から呼べるので、メニューに FULLSCREEN ボタンを置く。終了・回転で解除されるので、ゲーム開始時にも取り直す
-  - iPhone の Safari は Fullscreen API を動画以外に使えない。ホーム画面に追加した PWA（standalone）で開けば URL バーが消えるので、案内文に書く。ブラウザのままなら `100dvh` で URL バーが縮んだぶんは追従している（対応済み）
+- [x] 上下のブラウザ UI（URL バー・メニューバー）を除いて使う
+  - 対応: `src/render/fullscreen.ts`。メニュー右上の FULL SCREEN ボタン（タッチ端末で Fullscreen API が使えるときだけ出す）で切り替え、希望を localStorage に保存する。戻る操作や画面オフで解除されるので、ゲーム開始・再開・やり直しの操作の中で `sync()` が取り直す。standalone の PWA では出さない
+  - iPhone の Safari は Fullscreen API を使えないので、案内文に「Share ▸ Add to Home Screen」を出す（実機で未確認）
 - [ ] 危険状態で曲を変える
   - 原作は上 3〜4 段まで積み上がると別の曲（ピンチの曲）に切り替わる。今はテンポを 1.3 倍にするだけで気づきにくい
   - `src/render/bgm.ts` にピンチ用の曲を1つ足し、`setDanger` でテンポではなく曲を切り替える。戻るときは元の曲の続きから。曲はコードで書く方針なので `tools/bgm-candidates.html` で候補を作ってから
