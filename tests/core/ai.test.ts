@@ -69,3 +69,73 @@ describe("CPU プレイヤー", () => {
     expect(game.boards[1].panelsCleared).toBeGreaterThan(0);
   });
 });
+
+/** 1回の入れ替えでは何も揃わず、おじゃまが乗っていて危険状態なので手動せり上げもできない盤面（実機で CPU が止まった場面）。 */
+function stuckBoard(): Board {
+  const b = new Board({ seed: 1, initialHeight: 0, noRise: true });
+  b.setColumns([
+    [6, 2, 3],
+    [1],
+    [0, 2, 0],
+    [1, 4, 0],
+    [0, 3, 3],
+    [2, 4, 1, 1, 2, 0],
+  ]);
+  b.placeGarbage(0, 6, 6, 2);
+  b.placeGarbage(0, 8, 5, 1);
+  return b;
+}
+
+function firstEvents(b: Board, cpu: CpuPlayer, frames: number): { swap: number; match: number } {
+  let swap = -1;
+  let match = -1;
+  for (let f = 0; f < frames && match < 0; f++) {
+    b.tick(cpu.next());
+    if (swap < 0 && b.events.some((e) => e.type === "swap")) swap = b.frame;
+    if (b.events.some((e) => e.type === "match")) match = b.frame;
+  }
+  return { swap, match };
+}
+
+describe("CPU が止まらない", () => {
+  it("1回の入れ替えで揃う手がない盤面でも、パネルを運んで揃える", () => {
+    for (const level of ["easy", "normal", "hard"] as CpuLevel[]) {
+      const b = stuckBoard();
+      const { swap, match } = firstEvents(b, new CpuPlayer(b, level), 60 * 10);
+      expect(swap, `${level} swap`).toBeGreaterThan(0);
+      expect(match, `${level} match`).toBeGreaterThan(0);
+    }
+  });
+
+  it("穴に落とす先の足場を作ってから落とす手順を見つける", () => {
+    // 行1の 0 0 に3つ目の 0 を落としたいが、列2は底まで空。先に行0の 0 を列2へ動かして足場にする
+    const b = new Board({ seed: 1, initialHeight: 0, noRise: true });
+    b.setColumns([
+      [1, 0, 3, 0, 3, 1, 0, 1],
+      [3, 0, 4],
+      [],
+      [0],
+      [6, 3],
+      [4],
+    ]);
+    const { match } = firstEvents(b, new CpuPlayer(b, "hard"), 60 * 10);
+    expect(match).toBeGreaterThan(0);
+  });
+
+  it("相手が放置していても、入れ替えが4秒以上途切れない", () => {
+    for (const level of ["easy", "normal", "hard"] as CpuLevel[]) {
+      for (let seed = 1; seed <= 4; seed++) {
+        const game = new Game({ mode: "cpu", seed, speedLevel: 1, cpuLevel: level });
+        const b = game.boards[1];
+        let lastSwap = 0;
+        let worst = 0;
+        for (let f = 0; f < 60 * 90 && !game.finished; f++) {
+          game.tick([NO_INPUT]);
+          if (b.events.some((e) => e.type === "swap")) lastSwap = b.frame;
+          worst = Math.max(worst, b.frame - lastSwap);
+        }
+        expect(worst, `${level} seed=${seed}`).toBeLessThanOrEqual(240);
+      }
+    }
+  });
+});

@@ -44,6 +44,7 @@ describe("CPU のアクティブ連鎖", () => {
 
   it("easy は先読みしないので仕込まない", () => {
     const { chains } = playUntilChain("easy", 400);
-    expect(chains).toEqual([1]);
+    expect(chains[0]).toBe(1);
+    expect(chains).not.toContain(2);
   });
 });
