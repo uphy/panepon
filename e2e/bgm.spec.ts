@@ -12,11 +12,11 @@ async function setHidden(page: Page, hidden: boolean): Promise<void> {
 function bgmState(page: Page) {
   return page.evaluate(() => {
     const a = (window as any).__paneponAudio;
-    return { playing: a.bgm?.playing ?? null, danger: a.danger, tempo: a.bgm?.tempoScale ?? 1 };
+    return { playing: a.bgm?.playing ?? null, tune: a.bgm?.tune ?? null, danger: a.danger };
   });
 }
 
-test("危険状態で速くなった曲は、終了後とメニューでは元のテンポに戻る", async ({ page }) => {
+test("危険状態ではピンチの曲に切り替わり、抜けるとゲーム曲に戻る。終了後は止まり、メニューではメニュー曲", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   // AudioContext はユーザー操作のあとでしか動かないので、1回クリックしてから始める
@@ -31,8 +31,15 @@ test("危険状態で速くなった曲は、終了後とメニューでは元�
   });
   await page.waitForTimeout(300);
   const danger = await bgmState(page);
-  expect(danger.danger).toBe(true);
-  expect(danger.tempo).toBeGreaterThan(1);
+  expect(danger).toEqual({ playing: "game", tune: "danger", danger: true });
+
+  // 低くしてピンチを抜けると、ゲーム曲に戻る
+  await page.evaluate(() => {
+    const b = (window as any).__panepon.game.boards[0];
+    b.setColumns([[0, 1, 2], [1], [2], [3], [4], [0]]);
+  });
+  await page.waitForTimeout(300);
+  expect(await bgmState(page)).toEqual({ playing: "game", tune: "game", danger: false });
 
   // 天井まで積んで終わらせる
   await page.evaluate(() => {
@@ -41,17 +48,11 @@ test("危険状態で速くなった曲は、終了後とメニューでは元�
   });
   await page.waitForFunction(() => (window as any).__panepon.game.finished, null, { timeout: 15_000 });
   await page.waitForTimeout(200);
-  const ended = await bgmState(page);
-  expect(ended.playing).toBeNull();
-  expect(ended.danger).toBe(false);
-  expect(ended.tempo).toBe(1);
+  expect(await bgmState(page)).toEqual({ playing: null, tune: null, danger: false });
 
   await page.keyboard.press("Escape");
   await page.waitForTimeout(500);
-  const menu = await bgmState(page);
-  expect(menu.playing).toBe("menu");
-  expect(menu.danger).toBe(false);
-  expect(menu.tempo).toBe(1);
+  expect(await bgmState(page)).toEqual({ playing: "menu", tune: "menu", danger: false });
 });
 
 test("メニューで画面が隠れると曲が止まり、戻ると鳴り直す", async ({ page }) => {

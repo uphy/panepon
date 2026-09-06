@@ -1,7 +1,7 @@
 /**
  * Web Audio だけで鳴らす BGM のシーケンサ。音声ファイルは使わない。
  * 曲データは tools/bgm-candidates.html から移植したもの。
- * オープニング（メニュー）は「1. ポップ・フェアリー」、ゲーム中は「5. チル・幻想」。
+ * オープニング（メニュー）は「1. ポップ・フェアリー」、ゲーム中は「5. チル・幻想」、危険状態（ピンチ）は「2. スピード・テクノ」。
  *
  * 音符列は "c4:2 e4+g4:4 r:2" の形式。長さの単位は16分音符で、省略時は 1。
  * "+" で和音、"r" で休符。ドラムは "x...x..." の形式で、x がヒット、o がオープンハイハット。
@@ -107,6 +107,8 @@ function arpSeq(chords: string[][], pattern: number[], perChord: number, len: nu
 // ------------------------------------------------------------- 楽器と曲
 
 export type SongName = "menu" | "game";
+/** 実際に鳴らす曲。game は危険状態のとき danger に置き換わる。 */
+export type TuneName = SongName | "danger";
 
 /** オープニング: C major 132 BPM。跳ねるベースと分散和音の明るい曲。 */
 function buildMenuSong(): Song {
@@ -199,6 +201,51 @@ function buildGameSong(): Song {
   };
 }
 
+/** ピンチ: A minor 150 BPM。16分刻みのオクターブベースで疾走感を出し、危険状態に気づかせる。 */
+function buildDangerSong(): Song {
+  const bassSaw: Instrument = { wave: "sawtooth", wave2: "square", mix2: 0.3, gain: 0.28, a: 0.003, d: 0.1, s: 0.6, r: 0.05, cutoff: 700, fenv: 3, gate: 0.7, echo: 0 };
+  const arpThin: Instrument = { wave: "pulse12", gain: 0.11, a: 0.002, d: 0.06, s: 0.3, r: 0.03, cutoff: 6000, gate: 0.6, echo: 0.4 };
+  const leadPulse: Instrument = { wave: "pulse25", wave2: "pulse25", detune2: 7, mix2: 0.6, gain: 0.13, a: 0.01, d: 0.1, s: 0.8, r: 0.08, cutoff: 4200, vib: { rate: 6, depth: 12, delay: 0.1 }, gate: 0.9, echo: 0.3 };
+  const chords: Record<string, string[]> = {
+    Am: ["a3", "c4", "e4", "a4"],
+    F: ["f3", "a3", "c4", "f4"],
+    C: ["c4", "e4", "g4", "c5"],
+    G: ["g3", "b3", "d4", "g4"],
+    E: ["e4", "g#4", "b4", "e5"],
+  };
+  const root: Record<string, string> = { Am: "a", F: "f", C: "c", G: "g", E: "e" };
+  const prog = ["Am", "F", "C", "G", "Am", "F", "G", "E"];
+  const octBass = (r: string): string => {
+    const bar = `${r}2 ${r}2 ${r}3 ${r}2 ${r}2 ${r}3 ${r}2 ${r}3`;
+    return `${bar} ${bar}`;
+  };
+  const melody = [
+    "a4:2 c5:2 e5:2 a5:4 g5:2 e5:4",
+    "f5:2 e5:2 c5:2 a4:4 c5:2 d5:4",
+    "e5:2 g5:2 c6:4 b5:2 g5:2 e5:4",
+    "d5:2 g5:2 b5:2 d6:4 b5:2 g5:4",
+    "a5:4 e5:2 c5:2 a4:2 c5:2 e5:4",
+    "f5:4 a5:2 c6:2 a5:2 f5:2 e5:4",
+    "d5:2 e5:2 g5:2 b5:2 d6:2 b5:2 g5:4",
+    "g#5:4 e5:2 b4:2 g#4:2 b4:2 e5:4",
+  ].join(" ");
+  return {
+    tempo: 150,
+    beat: 16,
+    echoSteps: 3,
+    echoFeedback: 0.35,
+    drumGain: 1,
+    tracks: [
+      parseSeq(prog.map((k) => octBass(root[k])).join(" "), bassSaw),
+      parseSeq(arpSeq(prog.map((k) => chords[k]), [0, 1, 2, 3], 16, 1), arpThin),
+      parseSeq(melody, leadPulse),
+      parseDrum("x...x...x...x...", "kick"),
+      parseDrum("....x.......x...", "snare"),
+      parseDrum("x.o.x.o.x.o.x.o.", "hat"),
+    ],
+  };
+}
+
 // ------------------------------------------------------------- 再生
 
 /** デューティ比 duty のパルス波。SFC 風の細い音に使う。 */
@@ -211,9 +258,15 @@ export function makePulseWave(ctx: AudioContext, duty: number): PeriodicWave {
 }
 
 export class BgmPlayer {
-  private readonly songs: Record<SongName, Song> = { menu: buildMenuSong(), game: buildGameSong() };
+  private readonly songs: Record<TuneName, Song> = { menu: buildMenuSong(), game: buildGameSong(), danger: buildDangerSong() };
   private song: Song = this.songs.game;
+  /** 求められている曲。 */
   private current: SongName | null = null;
+  /** 実際に鳴っている曲。 */
+  private tune_: TuneName | null = null;
+  private danger = false;
+  /** ゲーム曲からピンチの曲へ切り替えたときの位置。戻るときはこの小節から続ける。 */
+  private gameStep = 0;
   private readonly out: GainNode;
   private readonly echoIn: GainNode;
   private readonly delay: DelayNode;
@@ -223,7 +276,6 @@ export class BgmPlayer {
   private timer: number | null = null;
   private step = 0;
   private nextTime = 0;
-  private tempoScale = 1;
 
   constructor(
     private readonly ctx: AudioContext,
@@ -258,44 +310,75 @@ export class BgmPlayer {
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
 
-  /** 再生中の曲。止まっていれば null。 */
+  /** 求められている曲。止まっていれば null。 */
   get playing(): SongName | null {
     return this.current;
+  }
+
+  /** 実際に鳴っている曲。ゲーム中の危険状態では "danger"。止まっていれば null。 */
+  get tune(): TuneName | null {
+    return this.tune_;
   }
 
   start(name: SongName): void {
     if (this.current === name) return;
     this.stop();
-    const now = this.ctx.currentTime;
-    this.out.gain.cancelScheduledValues(now);
-    this.out.gain.setValueAtTime(1, now);
     this.current = name;
-    this.song = this.songs[name];
-    this.feedback.gain.value = this.song.echoFeedback;
-    this.step = 0;
-    this.nextTime = this.ctx.currentTime + 0.08;
-    this.tick();
+    this.gameStep = 0;
+    this.play(name === "game" && this.danger ? "danger" : name, 0);
   }
 
   /** 止める。予約済みの音も出力ごと素早く絞り、止めた直後に1音だけ漏れないようにする。 */
   stop(): void {
+    this.halt();
+    this.current = null;
+    this.tune_ = null;
+  }
+
+  /**
+   * 危険状態ではゲーム曲をピンチの曲に切り替える。抜けたらゲーム曲を、切り替えた小節の頭から続ける。
+   * ゲーム曲以外（メニュー・停止中）は状態だけ覚えておき、次に start("game") したときに反映する。
+   */
+  setDanger(on: boolean): void {
+    this.danger = on;
+    if (this.current !== "game") return;
+    if (on && this.tune_ === "game") {
+      this.gameStep = this.step;
+      this.halt();
+      this.play("danger", 0);
+    } else if (!on && this.tune_ === "danger") {
+      this.halt();
+      const beat = this.songs.game.beat;
+      this.play("game", Math.floor(this.gameStep / beat) * beat);
+    }
+  }
+
+  /** スケジューラを止めて出力を絞る。曲の指定は変えない。 */
+  private halt(): void {
     if (this.timer !== null) window.clearTimeout(this.timer);
     this.timer = null;
-    this.current = null;
     const now = this.ctx.currentTime;
     this.out.gain.cancelScheduledValues(now);
     this.out.gain.setTargetAtTime(0, now, 0.01);
   }
 
-  /** 危険状態でテンポを速くする。 */
-  setDanger(on: boolean): void {
-    this.tempoScale = on ? 1.3 : 1;
+  /** 曲を step の位置から鳴らし始める。 */
+  private play(tune: TuneName, step: number): void {
+    const now = this.ctx.currentTime;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setValueAtTime(1, now);
+    this.tune_ = tune;
+    this.song = this.songs[tune];
+    this.feedback.gain.value = this.song.echoFeedback;
+    this.step = step;
+    this.nextTime = now + 0.08;
+    this.tick();
   }
 
   private tick(): void {
     const ctx = this.ctx;
     const song = this.song;
-    const stepDur = 60 / (song.tempo * this.tempoScale) / 4;
+    const stepDur = 60 / song.tempo / 4;
     this.delay.delayTime.setTargetAtTime(stepDur * song.echoSteps, ctx.currentTime, 0.05);
     while (this.nextTime < ctx.currentTime + 0.12) {
       const t = this.nextTime;

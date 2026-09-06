@@ -396,7 +396,7 @@ export class GameAudio {
     this.bgmBeforeSuspend = null;
   }
 
-  /** 危険状態でテンポを速くする。 */
+  /** 危険状態ではゲーム曲をピンチの曲に切り替える。 */
   setDanger(on: boolean): void {
     this.danger = on;
     this.bgm?.setDanger(on);
