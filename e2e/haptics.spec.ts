@@ -57,7 +57,8 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   }
   expect(cpuMatched).toBe(true);
   expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([]);
-  for (let i = 0; i < 120; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
+  // 板は揃ってから100フレーム待って送られ、52フレーム後に予告に入ってから降る
+  for (let i = 0; i < 300; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
   expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([70]);
 
   // 厚い板ほど長く震える

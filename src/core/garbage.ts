@@ -9,6 +9,11 @@ export interface GarbageSpec {
   type: GarbageType;
 }
 
+/** 相手から届いて予告に出ている板。readyAt（フレーム）になるまでは降れない。省略時はすぐ降れる。 */
+export interface IncomingGarbage extends GarbageSpec {
+  readyAt?: number;
+}
+
 /**
  * 同時消し n個 で送られる板の幅（厚さは1段）。
  * 4〜7個: 幅 n-1。8個以上は複数枚に分離する（合計 n 枚）。

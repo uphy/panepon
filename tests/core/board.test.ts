@@ -120,11 +120,14 @@ describe("消去", () => {
     expect(m).toHaveLength(1);
     expect(m[0].panels).toBe(4);
     expect(b.score).toBe(60);
-    const attack = events.find((e) => e.type === "attack");
+    expect(b.stopTimer).toBeGreaterThan(0);
+    // 板は揃ってから garbageSendDelay 待って送る
+    expect(events.some((e) => e.type === "attack")).toBe(false);
+    const later = run(b, TIMING.garbageSendDelay);
+    const attack = later.find((e) => e.type === "attack");
     expect(attack && attack.type === "attack" ? attack.garbage : []).toEqual([
       { width: 3, height: 1, type: "normal" },
     ]);
-    expect(b.stopTimer).toBeGreaterThan(0);
   });
 });
 
@@ -249,11 +252,12 @@ describe("連鎖", () => {
 });
 
 describe("おじゃまパネル", () => {
-  it("消去中でなければ盤面上部に投下され、落ちて着地すると揺れる", () => {
+  it("盤面が静止していれば盤面上部に投下され、落ちて着地すると揺れる", () => {
     const b = emptyBoard();
     b.setColumns([[0], [1], [0], [1], [0], [1]]);
     b.pendingGarbage.push({ width: 6, height: 1, type: "normal" });
-    const events = run(b, 1);
+    // 原作どおり、静止が2フレーム続いてから降る
+    const events = run(b, TIMING.garbageQuietFrames);
     expect(b.pendingGarbage).toHaveLength(0);
     expect(b.garbage.size).toBe(1);
     events.push(...run(b, 60));
