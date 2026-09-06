@@ -4,5 +4,8 @@
   "compatibility_date": "2026-09-01",
   "assets": {
     "directory": "./dist"
-  }
+  },
+  "routes": [
+    { "pattern": "swaprise.uphy.dev", "custom_domain": true }
+  ]
 }
