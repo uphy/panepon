@@ -221,3 +221,22 @@ test("エンドレス: 天井まで積むとゲームオーバーの表示にな
   const s = await boardState(page);
   expect(s.gameOver).toBe(true);
 });
+
+test("エンドレス: ゲームオーバー後は経過時間の表示が止まる", async ({ page }) => {
+  await page.goto("/?mode=endless&seed=3&bgm=0&countdown=0");
+  await waitForGame(page);
+  await page.evaluate(() => {
+    const p = (window as any).__swaprise;
+    const b = p.game.boards[0];
+    const col: number[] = [];
+    for (let r = 0; r < 12; r++) col.push(r % 2);
+    b.setColumns([col, [1], [2], [3], [4], [0]]);
+  });
+  await page.waitForFunction(() => (window as any).__swaprise.game.finished, null, { timeout: 10_000 });
+  const readInfoText = () =>
+    page.evaluate(() => (window as any).__swaprise.scene.views[0].infoText.text as string);
+  const before = await readInfoText();
+  await page.waitForTimeout(1500);
+  const after = await readInfoText();
+  expect(after).toBe(before);
+});
