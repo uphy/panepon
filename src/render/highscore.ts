@@ -19,6 +19,8 @@ export interface HighScores {
   endless: ScoreEntry[];
   timeattack: ScoreEntry[];
   cpu: Record<CpuLevel, CpuRecord>;
+  /** クリアしたパズルの面（0 始まりの通し番号）。 */
+  puzzle: number[];
 }
 
 const KEY = "panepon.highscores.v1";
@@ -33,6 +35,7 @@ function empty(): HighScores {
       normal: { wins: 0, losses: 0 },
       hard: { wins: 0, losses: 0 },
     },
+    puzzle: [],
   };
 }
 
@@ -65,6 +68,9 @@ export function loadHighScores(): HighScores {
         const r = parsed.cpu[level];
         if (r) base.cpu[level] = { wins: r.wins ?? 0, losses: r.losses ?? 0 };
       }
+    }
+    if (Array.isArray(parsed.puzzle)) {
+      base.puzzle = [...new Set(parsed.puzzle.filter((n) => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b);
     }
     return base;
   } catch {
@@ -108,6 +114,14 @@ export function recordCpuResult(level: CpuLevel, won: boolean): CpuRecord {
   else r.losses++;
   save(h);
   return { ...r };
+}
+
+/** パズルの面をクリアしたと記録する。 */
+export function recordPuzzleClear(stage: number): void {
+  const h = loadHighScores();
+  if (h.puzzle.includes(stage)) return;
+  h.puzzle = [...h.puzzle, stage].sort((a, b) => a - b);
+  save(h);
 }
 
 export function bestEndless(): ScoreEntry | null {

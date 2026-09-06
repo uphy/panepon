@@ -77,6 +77,8 @@ export class BoardView {
     private readonly showLevel: boolean,
     /** タイムアタックの制限時間（フレーム）。指定すると経過時間の代わりに残り時間を出す。 */
     private readonly timeLimit: number | null = null,
+    /** パズル。得点・時間の代わりに面の名前と残り手数を出す。 */
+    private readonly puzzle = false,
   ) {
     this.root = scene.add.container(0, 0);
     this.frame = scene.add.rectangle(-4, -4, BOARD_W + 8, BOARD_H + 8, 0x3a3a4c).setOrigin(0);
@@ -258,6 +260,11 @@ export class BoardView {
     }
     for (let c = 0; c < COLS; c++) {
       const img = this.nextCells[c];
+      // パズルにはせり上がりがなく、次の行もない
+      if (b.nextRow.length === 0) {
+        img.setVisible(false);
+        continue;
+      }
       img.setTexture(`panel-${b.nextRow[c]}-dark`);
       const py = ROWS * CELL - rise + shake;
       img.setPosition(c * CELL, py);
@@ -269,6 +276,15 @@ export class BoardView {
     this.bg.setFillStyle(b.panic ? 0x3a1e26 : b.danger ? 0x2c1e2a : BOARD_BG);
     this.frame.setFillStyle(b.panic && blink ? 0xaa3344 : 0x3a3a4c);
 
+    if (this.puzzle) {
+      this.scoreText.setText(this.label);
+      const left = b.movesLeft ?? 0;
+      this.infoText.setColor(left <= 1 ? "#ff5c6c" : "#9a9ab0");
+      this.infoText.setText(`MOVES ${left}`);
+      this.stopBar.setVisible(false);
+      this.pendingGfx.clear();
+      return;
+    }
     this.scoreText.setText(`${this.label}  ${String(b.score).padStart(6, "0")}`);
     let seconds: number;
     if (this.timeLimit !== null) {

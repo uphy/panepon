@@ -236,31 +236,33 @@ test("横持ちの 2P 対戦は盤面を左右の端に寄せ、HUD を内側に
   expect(info.pauseX).toBe(info.w / 2);
 });
 
-test("メニューの FULL SCREEN ボタンで全画面の希望が保存され、EXIT で戻る", async ({ page }) => {
+test("SETTINGS の FULL SCREEN ボタンで全画面の希望が保存され、もう一度押すと戻る", async ({ page }) => {
   await page.goto("/?bgm=0");
   await page.waitForFunction(() => Boolean((window as any).__paneponScenes?.menu));
   await page.waitForTimeout(300);
+  await page.evaluate(() => (window as any).__paneponScenes.menu.children.getByName("settings").emit("pointerdown"));
+  await page.waitForTimeout(200);
   const btn = await page.evaluate(() => {
     const scene = (window as any).__paneponScenes.menu;
-    const b = scene.children.getByName("fullscreen");
+    const b = scene.children.getByName("settings-panel")?.list.find((o: any) => o.name === "fullscreen");
     if (!b) return null;
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
     const s = (rect.width / scene.scale.width) * scene.cameras.main.zoom;
     return { x: rect.left + b.x * s, y: rect.top + b.y * s, text: b.text };
   });
   expect(btn).not.toBeNull();
-  expect(btn!.text).toBe("FULL\nSCREEN");
+  expect(btn!.text).toBe("FULL SCREEN: OFF");
   const at = { x: btn!.x, y: btn!.y };
   await page.touchscreen.tap(at.x, at.y);
   await page.waitForTimeout(300);
   const on = await page.evaluate(() => ({
     stored: localStorage.getItem("panepon.fullscreen.v1"),
     active: Boolean(document.fullscreenElement),
-    text: (window as any).__paneponScenes.menu.children.getByName("fullscreen").text,
+    text: (window as any).__paneponScenes.menu.children.getByName("settings-panel").list.find((o: any) => o.name === "fullscreen").text,
   }));
   expect(on.stored).toBe("1");
-  // headless でも Fullscreen API は通る。通ったならボタンの表示が EXIT に変わる
-  if (on.active) expect(on.text).toBe("EXIT\nFULL");
+  // headless でも Fullscreen API は通る。通ったならボタンの表示が ON に変わる
+  if (on.active) expect(on.text).toBe("FULL SCREEN: ON");
   await page.touchscreen.tap(at.x, at.y);
   await page.waitForTimeout(300);
   const off = await page.evaluate(() => ({ stored: localStorage.getItem("panepon.fullscreen.v1"), active: Boolean(document.fullscreenElement) }));

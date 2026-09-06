@@ -75,7 +75,9 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   await page.waitForTimeout(400);
   const toggle = await page.evaluate(() => {
     const scene = (window as any).__panepon.scene.scene.manager.getScene("menu");
-    const t = scene.children.getByName("vibration");
+    // SETTINGS を開いて VIBRATION を押す
+    scene.children.getByName("settings").emit("pointerdown");
+    const t = scene.children.getByName("settings-panel").list.find((o: any) => o.name === "vibration");
     t.emit("pointerdown");
     return { text: t.text, stored: localStorage.getItem("panepon.haptics.v1") };
   });

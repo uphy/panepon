@@ -72,9 +72,12 @@ test("ハイスコア: エンドレスの結果が保存され、メニューに
 
   await page.keyboard.press("Escape");
   await page.waitForTimeout(400);
+  // 1 PLAYER を開くと ENDLESS の下にベストが出る
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
   const records = await page.evaluate(() => {
     const scene = (window as any).__panepon.scene.scene.manager.getScene("menu");
-    const t = scene.children.getByName("records");
+    const t = scene.children.getByName("item-endless-caption");
     return t ? t.text : "";
   });
   expect(records).toContain("BEST 004321");

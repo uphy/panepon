@@ -1,6 +1,6 @@
 import Phaser from "phaser";
-import { Game, type CpuLevel, type GameMode, type Input, NO_INPUT } from "../core";
-import { recordCpuResult, recordScore } from "./highscore";
+import { Game, PUZZLES, puzzleName, type CpuLevel, type GameMode, type Input, NO_INPUT } from "../core";
+import { recordCpuResult, recordPuzzleClear, recordScore } from "./highscore";
 import { BoardView, type HudSide } from "./BoardView";
 import { P1_KEYS, P2_KEYS, PlayerInput } from "./input";
 import { audio } from "./shared";
@@ -28,6 +28,8 @@ export class GameScene extends Phaser.Scene {
   paused = false;
   private mode: GameMode = "endless";
   private cpuLevel: CpuLevel = "normal";
+  /** パズルの面（0 始まり）。 */
+  private stage = 0;
   layout!: Layout;
   private vsText: Phaser.GameObjects.Text | null = null;
   private pauseButton!: Button;
@@ -48,16 +50,17 @@ export class GameScene extends Phaser.Scene {
     super("game");
   }
 
-  create(data: { mode: GameMode; cpuLevel?: CpuLevel }): void {
+  create(data: { mode: GameMode; cpuLevel?: CpuLevel; stage?: number }): void {
     this.mode = data.mode ?? "endless";
     this.cpuLevel = data.cpuLevel ?? "normal";
+    this.stage = Math.max(0, Math.min(PUZZLES.length - 1, data.stage ?? 0));
     const params = new URLSearchParams(location.search);
     const seed = Number(params.get("seed")) || (Date.now() & 0xffffff);
     const speedLevel = Number(params.get("speed")) || 1;
     const shockMax = params.has("shock") ? Number(params.get("shock")) || 0 : undefined;
     // ?time=秒 でタイムアタックの制限時間を変える（e2e 用）
     const timeLimitFrames = Number(params.get("time")) > 0 ? Math.round(Number(params.get("time")) * 60) : undefined;
-    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel, shockMax, timeLimitFrames });
+    this.game_ = new Game({ mode: this.mode, seed, speedLevel, cpuLevel: this.cpuLevel, shockMax, timeLimitFrames, stage: this.stage });
     this.accumulator = 0;
     this.paused = false;
     this.ended = false;
@@ -72,7 +75,11 @@ export class GameScene extends Phaser.Scene {
     applyLayout(this, this.layout);
 
     const boards = this.game_.boards;
-    if (boards.length === 1) {
+    if (this.mode === "puzzle") {
+      this.views.push(new BoardView(this, boards[0], `PUZZLE ${puzzleName(this.stage)}`, false, null, true));
+      this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
+      this.vsText = null;
+    } else if (boards.length === 1) {
       this.views.push(new BoardView(this, boards[0], "1P", true, this.game_.timeLimit));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
       this.vsText = null;
@@ -98,7 +105,7 @@ export class GameScene extends Phaser.Scene {
       this.add
         .text(0, 0, "▲ ▲ ▲", { fontFamily: FONT, fontSize: "16px", color: "#3a3a4c" })
         .setOrigin(0.5)
-        .setVisible(Boolean(this.inputs[i])),
+        .setVisible(Boolean(this.inputs[i]) && this.mode !== "puzzle"),
     );
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
@@ -326,7 +333,13 @@ export class GameScene extends Phaser.Scene {
 
   private restart(): void {
     fullscreen.sync();
-    this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel });
+    this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel, stage: this.stage });
+  }
+
+  /** パズルの次の面へ。 */
+  private nextStage(): void {
+    fullscreen.sync();
+    this.scene.restart({ mode: this.mode, cpuLevel: this.cpuLevel, stage: this.stage + 1 });
   }
 
   private toMenu(): void {
@@ -412,6 +425,8 @@ export class GameScene extends Phaser.Scene {
       text = `PANEPON  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
     } else if (this.mode === "timeattack") {
       text = `PANEPON  TIME ATTACK 2:00  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
+    } else if (this.mode === "puzzle") {
+      text = `PANEPON  PUZZLE ${puzzleName(this.stage)}  ${g.puzzleResult === "clear" ? "CLEAR" : "FAILED"}`;
     } else {
       const result = g.winner === 0 ? "WIN" : "LOSE";
       const foe = this.mode === "cpu" ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P";
@@ -430,7 +445,8 @@ export class GameScene extends Phaser.Scene {
     audio.setDanger(false);
     this.wasDanger = false;
     // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音。タイムアタックは時間切れなら完走の音
-    const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" ? g.winner === 0 : g.timeUp;
+    const humanWon =
+      this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" ? g.winner === 0 : this.mode === "puzzle" ? g.puzzleResult === "clear" : g.timeUp;
     if (humanWon) {
       audio.win();
       haptics.win();
@@ -451,8 +467,21 @@ export class GameScene extends Phaser.Scene {
         const share = new Button(this, 0, BOARD_H / 2 - 84, "SHARE", () => void this.share(share), { minWidth: 176, minHeight: 36 });
         this.views[0].addToOverlay(share);
       }
+      // パズルをクリアしたら次の面へのボタン
+      if (this.mode === "puzzle" && g.puzzleResult === "clear" && this.stage + 1 < PUZZLES.length) {
+        const next = new Button(this, 0, BOARD_H / 2 - 128, `NEXT  ${puzzleName(this.stage + 1)}`, () => this.nextStage(), { minWidth: 176, minHeight: 36 }).setName("next");
+        this.views[0].addToOverlay(next);
+      }
     });
-    if (this.mode === "endless" || this.mode === "timeattack") {
+    if (this.mode === "puzzle") {
+      const b = g.boards[0];
+      if (g.puzzleResult === "clear") {
+        recordPuzzleClear(this.stage);
+        this.views[0].showOverlay("CLEAR", `MOVES LEFT ${b.movesLeft ?? 0}`);
+      } else {
+        this.views[0].showOverlay("FAILED", `${b.panelCount()} PANELS LEFT`);
+      }
+    } else if (this.mode === "endless" || this.mode === "timeattack") {
       const b = g.boards[0];
       const rank = recordScore(this.mode, b.score, b.maxChain);
       const rankLine = rank === 1 ? "NEW RECORD!" : rank > 0 ? `RANK ${rank}` : "";

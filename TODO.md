@@ -40,12 +40,16 @@
   - 対応: `e2e/mobile.spec.ts`（CPU 対戦の非対称レイアウト、ポーズボタン、回転、2本指せり上げ、iPhone 14）、`e2e/records.spec.ts`、`e2e/pwa.spec.ts`。iPhone 14 の Safari は 390×664 で背が低いので、縦持ちの高さを画面の縦横比から決めるようにした（幅固定、高さは下限 500〜上限 640）
 - [x] タイムアタック（2分で何点）
   - 対応: `GameMode` に `timeattack`。`Game.timeLimit` / `framesLeft` / `timeUp`。残り時間はフレームで数えるのでポーズ中は減らない。記録は `highscores.timeattack` に別で保存。`?time=秒` で制限時間を変えられる（e2e 用）
-- [ ] ステージクリア・パズルモード（未着手。面データの方針が要る）
-  - パズルモードは「決められた手数で全部消す」面データが要る。原作の面を写すか自作するかを決めてから。ロジック側は Board に「せり上がりなし・手数カウント・全消し判定」を足せばよい
+- [x] ステージクリア・パズルモード
+  - 対応: `GameMode` に `puzzle`。`BoardOptions.moveLimit` でせり上がり（自動・手動）と次の行をなくし、静止した盤面でだけ入れ替えを受け付けて `movesLeft` を減らす。`Game` が静止後に全消し（clear）か手数切れ（fail）を判定する
+  - 面は自作。`src/core/puzzle.ts` のソルバー（静止盤面の幅優先探索、揃わない柄が残った盤面は捨てる）で「ちょうど N 手で解ける」面を `tools/make-puzzles.ts` が乱数から選び、解を本物の Board で再生して確かめてから `src/core/puzzles.ts` に書く。6 ステージ × 10 面、1〜5 手、5 種、消去中の入れ替えは受け付けない（解が1通りに定まる）
+  - メニューの 1P PUZZLE で面選び。ステージの札（STAGE 1〜6、クリア数と 10 個の点）を並べ、選んだステージの 10 面を黄色の枠で囲って下に出す。クリア済みは緑の ✓、選んでいる札・面は黄色。結果画面に NEXT。`?mode=puzzle&stage=2-3` で直接開ける。記録は `highscores.puzzle`（クリアした面の番号）
 - [x] 横持ちのスマホ専用レイアウト
   - 対応: `Layout.phoneLandscape`（タッチ端末で実画面の高さ 560px 未満）。高さ 412 固定で盤面を画面いっぱいに描き、HUD（得点・時間・予告おじゃま・せり上げ矢印）を盤面の横に置く `BoardView.hud`。2P と CPU 対戦は盤面を左右の端（40 論理px）に寄せ、ポーズは中央下。メニューは下段を3列にする
   - 直した不具合: 回転後に canvas が細長いまま中央に残っていた。Phaser の Scale.FIT は最初の縦横比を `resize()` でも保持するので、`applyLayout` で `displaySize.setAspectRatio` を入れ直す。e2e に回転後の canvas 実寸の検証を足した
   - マスの大きさは Pixel 7 横持ちで実画面 32px（縦持ちは 44px）。盤面が 12 段ある以上これが上限
+- [x] メニューの整理
+  - 対応: 最上位を 1 PLAYER / VS CPU / 2 PLAYERS の3つにし、1 PLAYER と VS CPU はその場で下位メニュー（ENDLESS / TIME ATTACK / PUZZLE、EASY / NORMAL / HARD、◂ BACK）に入れ替わる。項目の下に記録（ベスト・勝敗・パズルのクリア数）を小文字で添え、記録の行と案内文はメニューから消した。SOUND / VIBRATION / FULL SCREEN は SETTINGS、操作の説明は HOW TO PLAY、記録の一覧は RECORDS の小ボタン（下段に3つ）へ。前回遊んだモードを `panepon.lastmode.v1` に保存してカーソルの初期位置にする
 - [ ] オンライン機能（Cloudflare の無料枠で足りる。順に 1 → 2 → 3）
   - 今の構成は `wrangler deploy` で静的ファイルを配るだけ。同じ Worker に API を足し、`wrangler.jsonc` に `main`・`d1_databases`・`durable_objects` を追加する。CI の secret はそのまま使える
   - 無料枠（2026-09 時点の公開値）: Workers リクエスト 10万/日・CPU 10ms/回。D1 読み 500万行/日・書き 10万行/日・5GB。Durable Objects は SQLite 版のみ、リクエスト 10万/日・13,000 GB秒/日、WebSocket の受信は 20通で1リクエスト換算
@@ -67,7 +71,7 @@
 - [x] 横持ちの 2P 対戦で盤面を左右の端に寄せる
   - 対応済み（`1bd5b4e`、未デプロイ時点の報告）。横持ちのスマホ用レイアウトで、盤面は左右 40 論理px（実画面 約39px）の位置。手がぶつからないよう、これ以上は Android の戻るジェスチャ領域（24dp）を踏まない範囲で寄せてある。実機で試して足りなければ `GameScene.place()` の `edge` を詰める
 - [x] 上下のブラウザ UI（URL バー・メニューバー）を除いて使う
-  - 対応: `src/render/fullscreen.ts`。メニュー右上の FULL SCREEN ボタン（タッチ端末で Fullscreen API が使えるときだけ出す）で切り替え、希望を localStorage に保存する。戻る操作や画面オフで解除されるので、ゲーム開始・再開・やり直しの操作の中で `sync()` が取り直す。standalone の PWA では出さない
+  - 対応: `src/render/fullscreen.ts`。メニューの SETTINGS にある FULL SCREEN ボタン（タッチ端末で Fullscreen API が使えるときだけ出す）で切り替え、希望を localStorage に保存する。戻る操作や画面オフで解除されるので、ゲーム開始・再開・やり直しの操作の中で `sync()` が取り直す。standalone の PWA では出さない
   - iPhone の Safari は Fullscreen API を使えないので、案内文に「Share ▸ Add to Home Screen」を出す（実機で未確認）
 - [x] 危険状態で曲を変える
   - 対応: `src/render/bgm.ts` に候補ページの「2. スピード・テクノ」（A minor 150 BPM）をピンチの曲として移植し、`setDanger` でテンポではなく曲を切り替える。ゲーム曲へ戻るときは切り替えた小節の頭から続ける。ポーズ・画面オフからの復帰も危険状態なら同じ曲を鳴らし直す。e2e（`e2e/bgm.spec.ts`）で切り替えと復帰を確認

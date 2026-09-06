@@ -37,6 +37,9 @@ test("メニューが表示され、キーボードでエンドレスを開始�
   await expect(page.locator("canvas")).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${SHOT}/menu.png` });
+  // 1 PLAYER → ENDLESS
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
   await waitForGame(page);
   const s = await boardState(page);

@@ -8,3 +8,5 @@ export { Game } from "./game";
 export type { GameMode, GameOptions } from "./game";
 export { CpuPlayer, CPU_PARAMS } from "./ai";
 export type { CpuLevel } from "./ai";
+export * from "./puzzle";
+export { PUZZLES } from "./puzzles";

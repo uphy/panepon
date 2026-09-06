@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "puzzles": "esbuild tools/make-puzzles.ts --bundle --platform=node --format=esm --log-level=warning | node --input-type=module -"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

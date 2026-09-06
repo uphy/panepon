@@ -5,6 +5,9 @@ test("メニューから始めたゲームを Esc で抜けると、メニュー
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/?bgm=0&countdown=0");
   await page.waitForTimeout(400);
+  // 1 PLAYER → ENDLESS
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.waitForTimeout(300);
@@ -14,7 +17,10 @@ test("メニューから始めたゲームを Esc で抜けると、メニュー
     page.evaluate(() => (window as any).__panepon.scene.scene.manager.getScenes(true).map((s: any) => s.scene.key));
   expect(await active()).toEqual(["menu"]);
   expect(errors).toEqual([]);
-  // メニューが動いている（カーソル移動と再開始ができる）。2番目の項目は TIME ATTACK
+  // メニューが動いている（カーソル移動と再開始ができる）。前回がエンドレスなので 1 PLAYER を開くとカーソルは ENDLESS。その下が TIME ATTACK
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
+  expect(await page.evaluate(() => (window as any).__paneponScenes.menu.index)).toBe(0);
   await page.keyboard.press("ArrowDown");
   await page.waitForTimeout(100);
   expect(await page.evaluate(() => (window as any).__paneponScenes.menu.index)).toBe(1);

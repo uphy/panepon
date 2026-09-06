@@ -25,6 +25,10 @@ test("manifest にアイコンがあり、Service Worker が登録されてオ�
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator("canvas")).toBeVisible();
+  await page.waitForTimeout(300);
+  // 1 PLAYER → ENDLESS
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game), null, { timeout: 15_000 });
   await context.setOffline(false);

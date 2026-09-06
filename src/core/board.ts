@@ -96,6 +96,8 @@ export class Board {
   private readonly startLevel: number;
   private readonly speedUp: boolean;
   private readonly noRise: boolean;
+  /** パズルモードの残り手数。他のモードは null。 */
+  movesLeft: number | null = null;
   private readonly shockMax: number;
   private readonly shockEvery: number;
   /** 次のせり上がり行にビックリパネルを入れる予約。 */
@@ -109,7 +111,8 @@ export class Board {
     this.startLevel = opts.speedLevel ?? 1;
     this.level = this.startLevel;
     this.speedUp = opts.speedUp ?? false;
-    this.noRise = opts.noRise ?? false;
+    this.noRise = (opts.noRise ?? false) || opts.moveLimit !== undefined;
+    this.movesLeft = opts.moveLimit ?? null;
     this.shockMax = opts.shockMax ?? 0;
     this.shockEvery = Math.max(1, opts.shockEvery ?? 12);
     this.cells = [];
@@ -120,7 +123,8 @@ export class Board {
     }
     const h = opts.initialHeight ?? 5;
     if (h > 0) this.fillInitial(h);
-    this.nextRow = this.generateRow();
+    // パズルはせり上がりがないので、次の行は用意しない（描画もしない）
+    if (this.movesLeft === null) this.nextRow = this.generateRow();
   }
 
   // ---------------------------------------------------------------- helpers
@@ -129,7 +133,7 @@ export class Board {
     return this.cells[y][x];
   }
 
-  /** テスト用。列ごとに下から並べた柄で盤面を置き換える。 */
+  /** テスト・パズル用。列ごとに下から並べた柄で盤面を置き換える。 */
   setColumns(columns: Kind[][]): void {
     for (let r = 0; r < TOTAL_ROWS; r++) {
       for (let c = 0; c < COLS; c++) this.cells[r][c] = emptyCell();
@@ -156,6 +160,27 @@ export class Board {
       lines.push(line);
     }
     return lines.join("\n");
+  }
+
+  /** 盤面が静止しているか。入れ替え・浮遊・落下・消去中のパネルとおじゃまがない。 */
+  isSettled(): boolean {
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.cells[r][c];
+        if (isPanel(cell) && cell.state !== "idle") return false;
+      }
+    }
+    for (const g of this.garbage.values()) if (g.state !== "idle") return false;
+    return true;
+  }
+
+  /** 盤面に残っている通常パネルの枚数。 */
+  panelCount(): number {
+    let n = 0;
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) if (isPanel(this.cells[r][c])) n++;
+    }
+    return n;
   }
 
   private emit(e: BoardEvent): void {
@@ -286,7 +311,13 @@ export class Board {
       cursor.y = ny;
       this.emit({ type: "move" });
     }
-    if (input.swap) this.trySwap();
+    if (!input.swap) return;
+    if (this.movesLeft === null) {
+      this.trySwap();
+      return;
+    }
+    // パズル: 静止した盤面でだけ入れ替えを受け付け、成功した入れ替えを1手と数える
+    if (this.movesLeft > 0 && this.isSettled() && this.trySwap()) this.movesLeft--;
   }
 
   /** カーソル位置の2枚を入れ替える。成功したら true。 */
@@ -837,7 +868,7 @@ export class Board {
     const busy = this.hasMatched() || this.hasTransforming();
     const touching = this.topTouching();
     let manual = false;
-    if (input.raise && !busy && this.shakeTimer === 0 && !touching) {
+    if (input.raise && this.movesLeft === null && !busy && this.shakeTimer === 0 && !touching) {
       this.riseProgress += 1 / TIMING.manualRisePerRow;
       manual = true;
     } else if (!this.noRise && !busy && this.shakeTimer === 0 && !touching && this.stopTimer === 0) {

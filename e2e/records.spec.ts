@@ -9,7 +9,7 @@ test.use({
   userAgent: pixel.userAgent,
 });
 
-test("メニューの記録をタップすると上位5件の一覧が開き、CLOSE で閉じる", async ({ page }) => {
+test("メニューの RECORDS をタップすると上位5件の一覧が開き、CLOSE で閉じる", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
       "panepon.highscores.v1",
@@ -30,7 +30,7 @@ test("メニューの記録をタップすると上位5件の一覧が開き、C
     const t = scene.children.getByName("records");
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
     const s = (rect.width / scene.scale.width) * scene.cameras.main.zoom;
-    return { x: rect.left + t.x * s, y: rect.top + (t.y + t.height / 2) * s };
+    return { x: rect.left + t.x * s, y: rect.top + t.y * s };
   });
   await page.touchscreen.tap(pos.x, pos.y);
   await page.waitForTimeout(200);
