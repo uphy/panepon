@@ -59,9 +59,9 @@ export class MenuScene extends Phaser.Scene {
     const H = layout.height;
     const cx = W / 2;
 
-    // 背の低い縦画面（Safari のツールバーがある iPhone など）では、縦の間隔を詰める
-    const compact = layout.portrait && H < 560;
-    const titleY = layout.portrait ? (compact ? 40 : 64) : 56;
+    // 背の低い画面（Safari のツールバーがある iPhone、横持ちのスマホ）では、縦の間隔を詰める
+    const compact = H < 560;
+    const titleY = compact ? 40 : layout.portrait ? 64 : 56;
     this.add
       .text(cx, titleY, "PANEPON", { fontFamily: FONT, fontSize: layout.portrait ? "48px" : "56px", color: TEXT_COLOR, fontStyle: "bold" })
       .setOrigin(0.5);
@@ -78,8 +78,8 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const itemTop = titleY + (compact ? 106 : layout.portrait ? 128 : 134);
-    const itemGap = layout.portrait ? (compact ? 34 : 42) : 34;
-    const itemPad = layout.portrait ? (compact ? 5 : 8) : 4;
+    const itemGap = compact ? 34 : layout.portrait ? 42 : 34;
+    const itemPad = layout.portrait ? (compact ? 5 : 8) : compact ? 5 : 4;
     ITEMS.forEach((item, i) => {
       // 指で押す前提で、文字の上下に余白を取って当たり判定を高さ 32 論理px 以上にする
       const t = this.add
@@ -98,6 +98,7 @@ export class MenuScene extends Phaser.Scene {
       this.texts.push(t);
     });
 
+    const recordsY = itemTop + (ITEMS.length - 1) * itemGap + (compact ? 16 : 22);
     // 記録。エンドレスのベストと、CPU 対戦の勝敗
     const hs = loadHighScores();
     const best = hs.endless[0];
@@ -108,7 +109,7 @@ export class MenuScene extends Phaser.Scene {
     this.add
       .text(
         cx,
-        itemTop + (ITEMS.length - 1) * itemGap + (compact ? 16 : 22),
+        recordsY,
         [best ? `BEST ${String(best.score).padStart(6, "0")}   MAX CHAIN x${best.maxChain}` : "BEST ------", `VS CPU  ${cpuLine}`, "▸ RECORDS"].join("\n"),
         { fontFamily: FONT, fontSize: "12px", color: "#7a7a90", align: "center" },
       )
@@ -157,20 +158,28 @@ export class MenuScene extends Phaser.Scene {
     if (layout.portrait) {
       const toggleY = H - 88;
       toggles.forEach((b, i) => b.setPosition(cx + (i - (toggles.length - 1) / 2) * 132, toggleY));
+    } else if (layout.phoneLandscape) {
+      // 横持ちのスマホは下を3列にする。左に案内、中央に記録、右に切り替え
+      toggles.forEach((b, i) => b.setPosition(W - 150, recordsY + 10 + i * 44));
     } else {
       // 横長では記録の左右に置く
-      const toggleY = itemTop + (ITEMS.length - 1) * itemGap + 50;
-      toggles.forEach((b, i) => b.setPosition(cx + (i === 0 ? -300 : 300), toggleY));
+      toggles.forEach((b, i) => b.setPosition(cx + (i === 0 ? -300 : 300), recordsY + 28));
     }
-    this.add
-      .text(cx, H - 34, help.join("\n"), {
-        fontFamily: FONT,
-        fontSize: "12px",
-        color: "#9a9ab0",
-        align: "center",
-        wordWrap: { width: W - 20 },
-      })
-      .setOrigin(0.5);
+    if (layout.phoneLandscape) {
+      this.add
+        .text(150, recordsY + 30, help.join("\n"), { fontFamily: FONT, fontSize: "12px", color: "#9a9ab0", align: "center", wordWrap: { width: 280 } })
+        .setOrigin(0.5);
+    } else {
+      this.add
+        .text(cx, H - 34, help.join("\n"), {
+          fontFamily: FONT,
+          fontSize: "12px",
+          color: "#9a9ab0",
+          align: "center",
+          wordWrap: { width: W - 20 },
+        })
+        .setOrigin(0.5);
+    }
 
     // 回転・ウィンドウサイズの変更でレイアウトが変わったら、メニューは作り直す
     let resizeTimer: number | null = null;

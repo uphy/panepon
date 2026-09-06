@@ -5,6 +5,10 @@ import { audio } from "./shared";
 import { haptics } from "./haptics";
 import { DPR } from "./hidpi";
 
+export type HudSide = "top" | "left" | "right";
+/** 盤面と横置きの HUD の間隔。 */
+const HUD_GAP = 12;
+
 /** 描画する行の範囲。可視12段の上に、降ってくるおじゃまが見えるぶんだけ余裕を持たせる。 */
 const DRAW_ROWS = Math.min(TOTAL_ROWS, ROWS + 6);
 
@@ -34,6 +38,8 @@ export class BoardView {
   ox = 0;
   oy = 0;
   scale = 1;
+  /** 得点・時間・予告おじゃまを置く場所。top は盤面の上下、left / right は盤面の横（横持ちのスマホ用）。 */
+  hud: HudSide = "top";
 
   /** 経過時間の起点を今にする。カウントダウンが終わって動き出すときに呼ぶ。 */
   resetTimer(): void {
@@ -46,11 +52,22 @@ export class BoardView {
   }
 
   /** 画面上の位置と大きさを決める。生成直後とレイアウト変更時に呼ぶ。 */
-  place(ox: number, oy: number, scale = 1): void {
+  place(ox: number, oy: number, scale = 1, hud: HudSide = "top"): void {
     this.ox = ox;
     this.oy = oy;
     this.scale = scale;
+    this.hud = hud;
     this.root.setPosition(ox, oy).setScale(scale);
+    if (hud === "top") {
+      this.scoreText.setPosition(0, -30).setOrigin(0, 0);
+      this.infoText.setPosition(BOARD_W, BOARD_H + 14).setOrigin(1, 0).setAlign("right");
+    } else if (hud === "right") {
+      this.scoreText.setPosition(BOARD_W + HUD_GAP, 0).setOrigin(0, 0);
+      this.infoText.setPosition(BOARD_W + HUD_GAP, 28).setOrigin(0, 0).setAlign("left");
+    } else {
+      this.scoreText.setPosition(-HUD_GAP, 0).setOrigin(1, 0);
+      this.infoText.setPosition(-HUD_GAP, 28).setOrigin(1, 0).setAlign("right");
+    }
   }
 
   constructor(
@@ -267,19 +284,23 @@ export class BoardView {
     this.infoText.setColor(this.timeLimit !== null && seconds <= 10 ? "#ff5c6c" : "#9a9ab0");
     if (this.showLevel) parts.push(`SPEED ${b.level}`);
     parts.push(`MAX x${b.maxChain}`);
-    this.infoText.setText(parts.join("   "));
+    // 横置きの HUD は幅が狭いので1行ずつ
+    this.infoText.setText(parts.join(this.hud === "top" ? "   " : "\n"));
 
     const stopW = Math.min(1, b.stopTimer / TIMING.stopMax) * BOARD_W;
     this.stopBar.setSize(stopW, 4);
     this.stopBar.setVisible(stopW > 0);
 
+    // 予告おじゃま。HUD が上なら盤面の上に、横なら HUD の下に並べる
     this.pendingGfx.clear();
     let px = 0;
     for (const spec of b.pendingGarbage) {
       const w = spec.width * 5;
       const h = Math.max(4, spec.height * 4);
       this.pendingGfx.fillStyle(spec.type === "shock" ? 0x5c5c66 : 0x8a8a96, 1);
-      this.pendingGfx.fillRect(px, -12 - h, w, h);
+      if (this.hud === "top") this.pendingGfx.fillRect(px, -12 - h, w, h);
+      else if (this.hud === "right") this.pendingGfx.fillRect(BOARD_W + HUD_GAP + px, 96, w, h);
+      else this.pendingGfx.fillRect(-HUD_GAP - px - w, 96, w, h);
       px += w + 4;
     }
   }

@@ -92,7 +92,7 @@ test("画面のポーズボタンで止まり、ポーズ画面の RESUME で再
   expect(await page.evaluate(() => (window as any).__panepon.scene.paused)).toBe(false);
 });
 
-test("回転すると横向きのレイアウトに置き直し、ゲームは続く", async ({ page }) => {
+test("回転すると横持ち用のレイアウトに置き直し、ゲームは続く", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
   await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
   await page.waitForTimeout(300);
@@ -109,17 +109,22 @@ test("回転すると横向きのレイアウトに置き直し、ゲームは�
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
     return {
       frame: p.game.boards[0].frame,
-      layout: { w: p.layout.width, h: p.layout.height, portrait: p.layout.portrait },
+      layout: { w: p.layout.width, h: p.layout.height, portrait: p.layout.portrait, phone: p.layout.phoneLandscape },
       canvasCenter: rect.left + rect.width / 2,
       windowCenter: window.innerWidth / 2,
       boardTop: p.scene.views[0].oy,
+      hud: p.scene.views[0].hud,
+      cellPx: (32 * rect.width) / p.layout.width,
     };
   });
-  expect(after.layout).toEqual({ w: 800, h: 520, portrait: false });
+  // 横持ちのスマホは高さ 412 固定、幅は縦横比（839×412 → 839）。盤面は高さいっぱいで HUD は横
+  expect(after.layout).toEqual({ w: 839, h: 412, portrait: false, phone: true });
   expect(after.frame).toBeGreaterThan(before.frame);
   // canvas は中央に置かれる（CSS と Phaser の二重の中央寄せでずれない）
   expect(Math.abs(after.canvasCenter - after.windowCenter)).toBeLessThan(2);
-  expect(after.boardTop).toBe(70);
+  expect(after.boardTop).toBe(14);
+  expect(after.hud).toBe("right");
+  expect(after.cellPx).toBeGreaterThanOrEqual(31);
 
   // 戻すと縦持ちに戻る
   await page.setViewportSize({ width: pixel.viewport.width, height: pixel.viewport.height });
@@ -199,4 +204,34 @@ test.describe("iPhone 14", () => {
     expect(info.centerDx).toBeLessThan(2);
     expect(info.cellPx).toBeGreaterThanOrEqual(36);
   });
+});
+
+test("横持ちの 2P 対戦は盤面を左右の端に寄せ、HUD を内側に置く", async ({ page }) => {
+  await page.setViewportSize({ width: pixel.viewport.height, height: pixel.viewport.width });
+  await page.goto("/?mode=versus&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForTimeout(200);
+  const info = await page.evaluate(() => {
+    const p = (window as any).__panepon;
+    const rect = document.querySelector("canvas")!.getBoundingClientRect();
+    const s = rect.width / p.layout.width;
+    const [a, b] = p.scene.views;
+    return {
+      huds: [a.hud, b.hud],
+      left: rect.left + a.ox * s,
+      right: window.innerWidth - (rect.left + (b.ox + 192) * s),
+      gap: (b.ox - (a.ox + 192)) * s,
+      pauseX: p.scene.pauseButton.x,
+      w: p.layout.width,
+    };
+  });
+  expect(info.huds).toEqual(["right", "left"]);
+  // 画面端のジェスチャ領域（24dp）は避けつつ、端に寄せる
+  expect(info.left).toBeGreaterThanOrEqual(24);
+  expect(info.left).toBeLessThan(60);
+  expect(info.right).toBeGreaterThanOrEqual(24);
+  expect(info.right).toBeLessThan(60);
+  // 2つの盤面の間に、両方の HUD と VS が入る幅がある
+  expect(info.gap).toBeGreaterThan(300);
+  expect(info.pauseX).toBe(info.w / 2);
 });

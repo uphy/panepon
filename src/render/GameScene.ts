@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { Game, type CpuLevel, type GameMode, type Input, NO_INPUT } from "../core";
 import { recordCpuResult, recordScore } from "./highscore";
-import { BoardView } from "./BoardView";
+import { BoardView, type HudSide } from "./BoardView";
 import { P1_KEYS, P2_KEYS, PlayerInput } from "./input";
 import { audio } from "./shared";
 import { haptics } from "./haptics";
@@ -233,13 +233,32 @@ export class GameScene extends Phaser.Scene {
     const W = L.width;
     const H = L.height;
     const boards = this.game_.boards;
-    const top = L.portrait ? 52 : 70;
-    const placeBoard = (i: number, ox: number, oy: number, scale: number): void => {
-      this.views[i].place(ox, oy, scale);
+    const top = L.phoneLandscape ? 14 : L.portrait ? 52 : 70;
+    const placeBoard = (i: number, ox: number, oy: number, scale: number, hud: HudSide = "top"): void => {
+      this.views[i].place(ox, oy, scale, hud);
       this.touches[i]?.place(ox, oy, scale);
-      this.raiseHints[i].setPosition(ox + (BOARD_W / 2) * scale, oy + BOARD_H * scale + (L.portrait ? 44 : 34));
+      // せり上げの矢印。HUD が上なら盤面の下、横なら HUD の下
+      if (hud === "top") this.raiseHints[i].setPosition(ox + (BOARD_W / 2) * scale, oy + BOARD_H * scale + (L.portrait ? 44 : 34));
+      else if (hud === "right") this.raiseHints[i].setPosition(ox + BOARD_W + 12 + 50, oy + 150);
+      else this.raiseHints[i].setPosition(ox - 12 - 50, oy + 150);
     };
-    if (boards.length === 1) {
+    if (L.phoneLandscape) {
+      // 横持ちのスマホ。盤面を高さいっぱいに描き、得点などは盤面の横に置く。
+      // 2P 対戦は盤面を左右の端に寄せ、2人が片方ずつ持って遊べるようにする。CPU 対戦も同じ並び
+      const edge = 40; // Android の戻るジェスチャ領域（約 24dp）を避ける
+      if (boards.length === 1) {
+        const ox = Math.floor((W - BOARD_W) / 2);
+        placeBoard(0, ox, top, 1, "right");
+        // ポーズボタンは HUD の列の下のほう
+        this.pauseButton.setPosition(ox + BOARD_W + 12 + 50, top + 220);
+      } else {
+        placeBoard(0, edge, top, 1, "right");
+        placeBoard(1, W - edge - BOARD_W, top, 1, "left");
+        this.vsText?.setPosition(W / 2, H / 2 - 40).setFontSize(22).setVisible(true);
+        // ポーズボタンは画面の中央下。2P でもどちらからも届く
+        this.pauseButton.setPosition(W / 2, H - 26);
+      }
+    } else if (boards.length === 1) {
       placeBoard(0, Math.floor((W - BOARD_W) / 2), top, 1);
     } else if (this.mode === "cpu" && L.portrait) {
       // 自分の盤面はエンドレスと同じ大きさ。CPU の盤面は右に小さく
@@ -257,9 +276,8 @@ export class GameScene extends Phaser.Scene {
       placeBoard(1, ox2, top, 1);
       this.vsText?.setPosition(W / 2, top + BOARD_H / 2).setFontSize(L.portrait ? 18 : 28).setVisible(true);
     }
-    // ポーズボタンは自分の盤面の右上（得点表示の右）
-    const v0 = this.views[0];
-    this.pauseButton.setPosition(v0.ox + BOARD_W - 22, top - 24);
+    // ポーズボタンは自分の盤面の右上（得点表示の右）。横持ちのスマホは上で決めた
+    if (!L.phoneLandscape) this.pauseButton.setPosition(this.views[0].ox + BOARD_W - 22, top - 24);
 
     this.pauseDim.setSize(W, H);
     this.pauseTitle.setPosition(W / 2, H / 2 - 40 - this.pauseButtons.length * 23 - 20);

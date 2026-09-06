@@ -19,10 +19,15 @@ export interface Layout {
   portrait: boolean;
   /** タッチ主体の端末か。案内文とボタンの出し分けに使う。 */
   touch: boolean;
+  /** 横持ちのスマホ。高さを盤面いっぱいに使い、得点などは盤面の横に置く。 */
+  phoneLandscape: boolean;
 }
 
+/** 横持ちのスマホ用の論理高さ。上 14 + 盤面 384 + 停止ゲージ。マスが実画面の高さ ÷ 12.9 になる。 */
+export const PHONE_LANDSCAPE_H = 412;
+
 export function sameLayout(a: Layout, b: Layout): boolean {
-  return a.width === b.width && a.height === b.height && a.portrait === b.portrait && a.touch === b.touch;
+  return a.width === b.width && a.height === b.height && a.portrait === b.portrait && a.touch === b.touch && a.phoneLandscape === b.phoneLandscape;
 }
 
 /** タッチ主体の端末か。マウスがあっても touch イベントがあれば true。 */
@@ -38,12 +43,13 @@ export function isTouchDevice(): boolean {
 export function layoutFor(mode: "menu" | "endless" | "timeattack" | "versus" | "cpu"): Layout {
   const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
   const touch = isTouchDevice();
+  const phoneLandscape = false;
   if (portrait) {
     // 幅を固定し、高さは画面の縦横比に合わせる。高さも固定すると、Safari のツールバーぶん背が低い iPhone で
     // 縦に合わせて縮み、盤面が幅いっぱいにならない。下限は盤面とその下の表示が収まる高さ、上限は間延びしない高さ。
     const fit = (width: number, minH: number, maxH: number): Layout => {
       const byAspect = Math.round((width * window.innerHeight) / window.innerWidth);
-      return { width, height: Math.max(minH, Math.min(maxH, byAspect)), portrait, touch };
+      return { width, height: Math.max(minH, Math.min(maxH, byAspect)), portrait, touch, phoneLandscape };
     };
     // Android の戻るジェスチャ（画面端からの横スワイプ）を盤面のドラッグが踏まないよう、
     // 盤面の左右には実画面で 24dp 以上の余白を取る（論理 px は幅 412dp の端末で換算）。
@@ -53,5 +59,11 @@ export function layoutFor(mode: "menu" | "endless" | "timeattack" | "versus" | "
     if (mode === "cpu") return fit(340, 500, 640);
     return fit(300, 500, 640);
   }
-  return { width: 800, height: 520, portrait, touch };
+  // 横持ちのスマホ（タッチ端末で実画面の高さが 560 CSS px 未満。タブレットは含まない）。
+  // 高さを固定して盤面を画面いっぱいにし、幅は縦横比から決める。2P 対戦は盤面を左右の端に寄せ、片方ずつ持って遊べる。
+  if (touch && typeof window !== "undefined" && window.innerHeight < 560) {
+    const byAspect = Math.round((PHONE_LANDSCAPE_H * window.innerWidth) / window.innerHeight);
+    return { width: Math.max(640, Math.min(1000, byAspect)), height: PHONE_LANDSCAPE_H, portrait, touch, phoneLandscape: true };
+  }
+  return { width: 800, height: 520, portrait, touch, phoneLandscape };
 }

@@ -17,6 +17,9 @@ export const DPR: number = (() => {
 
 /** 論理サイズのレイアウトを canvas とカメラに反映する。シーンの create() とリサイズ時に呼ぶ。 */
 export function applyLayout(scene: Phaser.Scene, layout: Layout): void {
+  // Scale.FIT の displaySize は最初に決めた縦横比を resize() でも変えない。
+  // 縦持ち → 横持ちで論理サイズの比が変わるときは、先に比を入れ直さないと canvas が細長いまま中央に残る。
+  scene.scale.displaySize.setAspectRatio(layout.width / layout.height);
   scene.scale.resize(layout.width * DPR, layout.height * DPR);
   const cam = scene.cameras.main;
   cam.setZoom(DPR);
