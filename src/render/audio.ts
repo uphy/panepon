@@ -60,7 +60,7 @@ const st = (f: number, semis: number): number => f * Math.pow(2, semis / 12);
  * BGM は AudioContext ができる前に startBgm() されても覚えておき、start() 時に鳴らし始める。
  * 効果音の設計は tools/sfx-candidates.html で選んだ案を移したもの。
  */
-const MUTE_KEY = "panepon.mute.v1";
+const MUTE_KEY = "swaprise.mute.v1";
 
 export class GameAudio {
   private ctx: AudioContext | null = null;

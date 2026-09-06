@@ -2,7 +2,7 @@
  * スマホの振動フィードバック。navigator.vibrate() がある端末（Android Chrome など）でだけ動く。
  * iOS Safari は未対応なので何もしない。鳴らす場面は「揃った」「板が落ちた」「危険」「終了」に絞る。
  */
-const KEY = "panepon.haptics.v1";
+const KEY = "swaprise.haptics.v1";
 
 export class Haptics {
   readonly supported: boolean;

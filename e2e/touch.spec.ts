@@ -6,7 +6,7 @@ const SHOT = "e2e/__screenshots__";
 async function cellCenter(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
   return page.evaluate(
     ([cx, cy]) => {
-      const p = (window as any).__panepon;
+      const p = (window as any).__swaprise;
       const t = p.scene.touches[0];
       const canvas = document.querySelector("canvas")!;
       const rect = canvas.getBoundingClientRect();
@@ -23,7 +23,7 @@ async function cellCenter(page: Page, x: number, y: number): Promise<{ x: number
 /** 盤面のすぐ下（盤面の外）の画面座標。ここを押し続けるとせり上げ。 */
 async function belowBoard(page: Page): Promise<{ x: number; y: number }> {
   return page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     const t = p.scene.touches[0];
     const canvas = document.querySelector("canvas")!;
     const rect = canvas.getBoundingClientRect();
@@ -36,7 +36,7 @@ async function belowBoard(page: Page): Promise<{ x: number; y: number }> {
 function kinds(page: Page, x1: number, x2: number, y: number): Promise<number[]> {
   return page.evaluate(
     ([a, b, row]) => {
-      const board = (window as any).__panepon.game.boards[0];
+      const board = (window as any).__swaprise.game.boards[0];
       return [board.cell(a, row).kind, board.cell(b, row).kind];
     },
     [x1, x2, y],
@@ -45,7 +45,7 @@ function kinds(page: Page, x1: number, x2: number, y: number): Promise<number[]>
 
 test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤面の外を押してせり上げ", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
 
   // (1,1) と (2,1) の境目をクリック → 1回で入れ替わる
@@ -54,7 +54,7 @@ test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤
   const c2 = await cellCenter(page, 2, 1);
   await page.mouse.click((c1.x + c2.x) / 2, c1.y);
   await page.waitForTimeout(150);
-  const cursor = await page.evaluate(() => ({ ...(window as any).__panepon.game.boards[0].cursor }));
+  const cursor = await page.evaluate(() => ({ ...(window as any).__swaprise.game.boards[0].cursor }));
   expect(cursor).toEqual({ x: 1, y: 1 });
   expect(await kinds(page, 1, 2, 1)).toEqual([tapBefore[1], tapBefore[0]]);
 
@@ -71,31 +71,31 @@ test("マウス: クリックで入れ替え、ドラッグで入れ替え、盤
 
   // 消去処理中はせり上げが止まるので、揃いのない静かな盤面に置き換えてから盤面の外を押す
   await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
   });
   await page.waitForTimeout(200);
   const below = await belowBoard(page);
-  const rowsBefore = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+  const rowsBefore = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
   await page.mouse.move(below.x, below.y);
   await page.mouse.down();
   await page.waitForTimeout(500);
-  const raising = await page.evaluate(() => (window as any).__panepon.scene.touches[0].raising);
+  const raising = await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising);
   await page.mouse.up();
   expect(raising).toBe(true);
-  const rowsAfter = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+  const rowsAfter = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
   expect(rowsAfter).toBeGreaterThan(rowsBefore);
-  const released = await page.evaluate(() => (window as any).__panepon.scene.touches[0].raising);
+  const released = await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising);
   expect(released).toBe(false);
 });
 
 test("ドラッグしたパネルは、入れ替え先の下が空ならそこで落ち、谷を越えて運べない", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
   // 列1が底まで空の谷。(0,1) のパネルを右へ3マスぶんドラッグする
   await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1], [], [2, 3], [4, 2], [0], [3]]);
   });
   await page.waitForTimeout(100);
@@ -108,7 +108,7 @@ test("ドラッグしたパネルは、入れ替え先の下が空ならそこ�
   await page.waitForTimeout(500);
   await page.mouse.up();
   const after = await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     return { landed: b.cell(1, 0).kind, origin: b.cell(0, 1).kind, far: b.cell(2, 1).kind, farther: b.cell(3, 1).kind };
   });
   // 谷に落ちて (1,0) に着地。列2・3の行1は元のまま
@@ -131,10 +131,10 @@ test.describe("スマホ縦画面", () => {
     await page.screenshot({ path: `${SHOT}/mobile-menu.png` });
 
     await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-    await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+    await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
     await page.waitForTimeout(300);
     const size = await page.evaluate(() => {
-      const p = (window as any).__panepon;
+      const p = (window as any).__swaprise;
       const canvas = document.querySelector("canvas")!;
       return { w: p.layout.width, h: p.layout.height, backing: canvas.width / p.layout.width, dpr: Math.ceil(devicePixelRatio) };
     });
@@ -148,7 +148,7 @@ test.describe("スマホ縦画面", () => {
     const next = await cellCenter(page, 3, 0);
     await page.touchscreen.tap((from.x + next.x) / 2, from.y);
     await page.waitForTimeout(150);
-    const cursor = await page.evaluate(() => ({ ...(window as any).__panepon.game.boards[0].cursor }));
+    const cursor = await page.evaluate(() => ({ ...(window as any).__swaprise.game.boards[0].cursor }));
     expect(cursor).toEqual({ x: 2, y: 0 });
     expect(await kinds(page, 2, 3, 0)).toEqual([tapBefore[1], tapBefore[0]]);
     await page.waitForTimeout(1200); // タップで揃った場合の消去処理を待つ
@@ -167,15 +167,15 @@ test.describe("スマホ縦画面", () => {
     // 盤面の下をタッチで押し続けるとせり上げ
     await page.waitForTimeout(1500);
     const below = await belowBoard(page);
-    const rowsBefore = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+    const rowsBefore = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: below.x, y: below.y }] });
     await page.waitForTimeout(500);
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    const rowsAfter = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+    const rowsAfter = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
     expect(rowsAfter).toBeGreaterThan(rowsBefore);
 
     await page.goto("/?mode=versus&seed=7&bgm=0&countdown=0");
-    await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+    await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${SHOT}/mobile-versus.png` });
   });

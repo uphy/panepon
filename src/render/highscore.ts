@@ -23,7 +23,7 @@ export interface HighScores {
   puzzle: number[];
 }
 
-const KEY = "panepon.highscores.v1";
+const KEY = "swaprise.highscores.v1";
 const MAX_ENTRIES = 5;
 
 function empty(): HighScores {

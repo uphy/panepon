@@ -138,8 +138,8 @@ export class MenuScene extends Phaser.Scene {
     const layout = layoutFor("menu");
     applyLayout(this, layout);
     // e2e 用。ゲームを始める前でもメニューの表示物を調べられるようにする
-    const g = window as unknown as { __paneponScenes?: Record<string, Phaser.Scene> };
-    g.__paneponScenes = { ...g.__paneponScenes, menu: this };
+    const g = window as unknown as { __swapriseScenes?: Record<string, Phaser.Scene> };
+    g.__swapriseScenes = { ...g.__swapriseScenes, menu: this };
     const W = layout.width;
     const H = layout.height;
     const cx = W / 2;
@@ -150,10 +150,10 @@ export class MenuScene extends Phaser.Scene {
     this.compact = compact;
     const titleY = compact ? 36 : layout.portrait ? 72 : 60;
     this.add
-      .text(cx, titleY, "PANEPON", { fontFamily: FONT, fontSize: layout.portrait ? "48px" : "56px", color: TEXT_COLOR, fontStyle: "bold" })
+      .text(cx, titleY, "SWAPRISE", { fontFamily: FONT, fontSize: layout.portrait ? "48px" : "56px", color: TEXT_COLOR, fontStyle: "bold" })
       .setOrigin(0.5);
     this.add
-      .text(cx, titleY + (compact ? 36 : 44), "Panel de Pon style action puzzle", { fontFamily: FONT, fontSize: compact ? "12px" : "14px", color: "#7a7a90" })
+      .text(cx, titleY + (compact ? 36 : 44), "Swap & match action puzzle", { fontFamily: FONT, fontSize: compact ? "12px" : "14px", color: "#7a7a90" })
       .setOrigin(0.5);
     // 柄の飾り。背の低い画面では省いて項目の場所を空ける
     if (!compact) {

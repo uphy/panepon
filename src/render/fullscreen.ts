@@ -7,7 +7,7 @@
  * - ホーム画面に追加した PWA（standalone）は最初から全画面なので何もしない
  * - iPhone の Safari は動画以外に Fullscreen API を使えないので supported が false。案内文でホーム画面への追加を勧める
  */
-const KEY = "panepon.fullscreen.v1";
+const KEY = "swaprise.fullscreen.v1";
 
 interface LegacyDocument extends Document {
   webkitFullscreenEnabled?: boolean;

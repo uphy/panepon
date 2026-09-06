@@ -158,7 +158,7 @@ export class GameScene extends Phaser.Scene {
     this.game.events.on("blur", onHidden);
     // Android の戻るジェスチャ・戻るボタンでアプリが閉じないよう、履歴を1つ積んで popstate を受ける。
     // 戻る1回目はポーズ、ポーズ中や終了後の戻るはメニューへ。
-    history.pushState({ panepon: "game" }, "");
+    history.pushState({ swaprise: "game" }, "");
     this.historyPushed = true;
     const onPop = (): void => {
       if (!this.historyPushed) return;
@@ -167,7 +167,7 @@ export class GameScene extends Phaser.Scene {
         this.toMenu();
         return;
       }
-      history.pushState({ panepon: "game" }, "");
+      history.pushState({ swaprise: "game" }, "");
       this.setPaused(true);
     };
     window.addEventListener("popstate", onPop);
@@ -213,7 +213,7 @@ export class GameScene extends Phaser.Scene {
     audio.stopBgm();
 
     // e2e とデバッグ用。
-    (window as unknown as { __panepon: unknown }).__panepon = {
+    (window as unknown as { __swaprise: unknown }).__swaprise = {
       game: this.game_,
       scene: this,
       /** 論理サイズ。canvas は DPR 倍なので、テストは scale.width ではなくこちらで座標を換算する */
@@ -232,7 +232,7 @@ export class GameScene extends Phaser.Scene {
     this.layout = next;
     applyLayout(this, next);
     this.place();
-    (window as unknown as { __panepon: { layout: Layout } }).__panepon.layout = next;
+    (window as unknown as { __swaprise: { layout: Layout } }).__swaprise.layout = next;
   }
 
   /** 現在のレイアウトに合わせて、盤面と UI の位置を決める。 */
@@ -422,15 +422,15 @@ export class GameScene extends Phaser.Scene {
     const b = g.boards[0];
     let text: string;
     if (this.mode === "endless") {
-      text = `PANEPON  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
+      text = `SWAPRISE  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
     } else if (this.mode === "timeattack") {
-      text = `PANEPON  TIME ATTACK 2:00  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
+      text = `SWAPRISE  TIME ATTACK 2:00  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
     } else if (this.mode === "puzzle") {
-      text = `PANEPON  PUZZLE ${puzzleName(this.stage)}  ${g.puzzleResult === "clear" ? "CLEAR" : "FAILED"}`;
+      text = `SWAPRISE  PUZZLE ${puzzleName(this.stage)}  ${g.puzzleResult === "clear" ? "CLEAR" : "FAILED"}`;
     } else {
       const result = g.winner === 0 ? "WIN" : "LOSE";
       const foe = this.mode === "cpu" ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P";
-      text = `PANEPON  ${result} vs ${foe}  MAX CHAIN x${b.maxChain}`;
+      text = `SWAPRISE  ${result} vs ${foe}  MAX CHAIN x${b.maxChain}`;
     }
     const outcome = await shareText(text);
     button.setText(outcome === "copied" ? "COPIED" : outcome === "failed" ? "SHARE FAILED" : "SHARE");

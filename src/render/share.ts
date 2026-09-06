@@ -12,7 +12,7 @@ export async function shareText(text: string): Promise<ShareOutcome> {
   const url = typeof location !== "undefined" ? location.origin + location.pathname : "";
   if (typeof navigator.share === "function") {
     try {
-      await navigator.share({ title: "PANEPON", text, url });
+      await navigator.share({ title: "SWAPRISE", text, url });
       return "shared";
     } catch {
       // 共有シートを閉じた（AbortError）か、対応していない。クリップボードへ

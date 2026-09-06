@@ -49,7 +49,7 @@
   - 直した不具合: 回転後に canvas が細長いまま中央に残っていた。Phaser の Scale.FIT は最初の縦横比を `resize()` でも保持するので、`applyLayout` で `displaySize.setAspectRatio` を入れ直す。e2e に回転後の canvas 実寸の検証を足した
   - マスの大きさは Pixel 7 横持ちで実画面 32px（縦持ちは 44px）。盤面が 12 段ある以上これが上限
 - [x] メニューの整理
-  - 対応: 最上位を 1 PLAYER / VS CPU / 2 PLAYERS の3つにし、1 PLAYER と VS CPU はその場で下位メニュー（ENDLESS / TIME ATTACK / PUZZLE、EASY / NORMAL / HARD、◂ BACK）に入れ替わる。項目の下に記録（ベスト・勝敗・パズルのクリア数）を小文字で添え、記録の行と案内文はメニューから消した。SOUND / VIBRATION / FULL SCREEN は SETTINGS、操作の説明は HOW TO PLAY、記録の一覧は RECORDS の小ボタン（下段に3つ）へ。前回遊んだモードを `panepon.lastmode.v1` に保存してカーソルの初期位置にする
+  - 対応: 最上位を 1 PLAYER / VS CPU / 2 PLAYERS の3つにし、1 PLAYER と VS CPU はその場で下位メニュー（ENDLESS / TIME ATTACK / PUZZLE、EASY / NORMAL / HARD、◂ BACK）に入れ替わる。項目の下に記録（ベスト・勝敗・パズルのクリア数）を小文字で添え、記録の行と案内文はメニューから消した。SOUND / VIBRATION / FULL SCREEN は SETTINGS、操作の説明は HOW TO PLAY、記録の一覧は RECORDS の小ボタン（下段に3つ）へ。前回遊んだモードを `swaprise.lastmode.v1` に保存してカーソルの初期位置にする
 - [ ] オンライン機能（Cloudflare の無料枠で足りる。順に 1 → 2 → 3）
   - 今の構成は `wrangler deploy` で静的ファイルを配るだけ。同じ Worker に API を足し、`wrangler.jsonc` に `main`・`d1_databases`・`durable_objects` を追加する。CI の secret はそのまま使える
   - 無料枠（2026-09 時点の公開値）: Workers リクエスト 10万/日・CPU 10ms/回。D1 読み 500万行/日・書き 10万行/日・5GB。Durable Objects は SQLite 版のみ、リクエスト 10万/日・13,000 GB秒/日、WebSocket の受信は 20通で1リクエスト換算

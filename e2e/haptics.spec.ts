@@ -20,9 +20,9 @@ const RECORD_VIBRATE = `
 test("揃うと自分の盤面だけ震え、メニューの切り替えで止まる", async ({ page }) => {
   await page.addInitScript(RECORD_VIBRATE);
   await page.goto("/?mode=cpu&cpu=easy&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     p.scene.scene.pause();
     (window as any).__vibrations = [];
     // 1P: 3枚消し。2P（CPU）: 4枚同時消し
@@ -35,7 +35,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
     // 以後 CPU には手を打たせない。CPU が続けて消すと2枚目の板が着地して振動が増える
     p.game.cpu = null;
   });
-  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__panepon.tick(ins), inputs);
+  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__swaprise.tick(ins), inputs);
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
   for (let i = 0; i < 8; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
   const calls = await page.evaluate(() => (window as any).__vibrations);
@@ -43,7 +43,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
 
   // CPU 側で4枚揃っても震えない。その攻撃（幅3の板）が自分の盤面に着地したときに震える
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     (window as any).__vibrations = [];
     const b = p.game.boards[1];
     b.cursor.x = 0;
@@ -53,7 +53,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   let cpuMatched = false;
   for (let i = 0; i < 40 && !cpuMatched; i++) {
     await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
-    cpuMatched = await page.evaluate(() => (window as any).__panepon.game.boards[1].events.some((e: any) => e.type === "match"));
+    cpuMatched = await page.evaluate(() => (window as any).__swaprise.game.boards[1].events.some((e: any) => e.type === "match"));
   }
   expect(cpuMatched).toBe(true);
   expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([]);
@@ -62,7 +62,7 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
 
   // 厚い板ほど長く震える
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     (window as any).__vibrations = [];
     p.game.boards[0].pendingGarbage.push({ width: 6, height: 2, type: "normal" });
   });
@@ -70,24 +70,24 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([90]);
 
   // メニューで OFF にすると保存され、以後は震えない
-  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.evaluate(() => (window as any).__swaprise.scene.scene.resume());
   await page.keyboard.press("Escape");
   await page.waitForTimeout(400);
   const toggle = await page.evaluate(() => {
-    const scene = (window as any).__panepon.scene.scene.manager.getScene("menu");
+    const scene = (window as any).__swaprise.scene.scene.manager.getScene("menu");
     // SETTINGS を開いて VIBRATION を押す
     scene.children.getByName("settings").emit("pointerdown");
     const t = scene.children.getByName("settings-panel").list.find((o: any) => o.name === "vibration");
     t.emit("pointerdown");
-    return { text: t.text, stored: localStorage.getItem("panepon.haptics.v1") };
+    return { text: t.text, stored: localStorage.getItem("swaprise.haptics.v1") };
   });
   expect(toggle.text.startsWith("VIBRATION: OFF")).toBe(true);
   expect(toggle.stored).toBe("off");
 
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     p.scene.scene.pause();
     (window as any).__vibrations = [];
     p.game.boards[0].setColumns([[0], [0], [1], [0], [2], [3]]);
@@ -96,6 +96,6 @@ test("揃うと自分の盤面だけ震え、メニューの切り替えで止�
   });
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }]);
   for (let i = 0; i < 8; i++) await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }]);
-  expect(await page.evaluate(() => (window as any).__panepon.game.boards[0].panelsCleared)).toBe(3);
+  expect(await page.evaluate(() => (window as any).__swaprise.game.boards[0].panelsCleared)).toBe(3);
   expect(await page.evaluate(() => (window as any).__vibrations)).toEqual([]);
 });

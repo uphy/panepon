@@ -13,7 +13,7 @@ test.use({
 async function toScreen(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
   return page.evaluate(
     ([gx, gy]) => {
-      const p = (window as any).__panepon;
+      const p = (window as any).__swaprise;
       const rect = document.querySelector("canvas")!.getBoundingClientRect();
       const s = rect.width / p.layout.width;
       return { x: rect.left + gx * s, y: rect.top + gy * s };
@@ -24,10 +24,10 @@ async function toScreen(page: Page, x: number, y: number): Promise<{ x: number; 
 
 test("縦持ちの CPU 対戦は自分の盤面が等倍、CPU の盤面が半分。画面端に 24dp 以上の余白", async ({ page }) => {
   await page.goto("/?mode=cpu&cpu=easy&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
   const info = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
     const s = rect.width / p.layout.width;
     const [me, cpu] = p.scene.views;
@@ -50,24 +50,24 @@ test("縦持ちの CPU 対戦は自分の盤面が等倍、CPU の盤面が半�
 
 test("画面のポーズボタンで止まり、ポーズ画面の RESUME で再開する。SOUND の切り替えは保存される", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
   const btn = await page.evaluate(() => {
-    const b = (window as any).__panepon.scene.pauseButton;
+    const b = (window as any).__swaprise.scene.pauseButton;
     return { x: b.x, y: b.y };
   });
   const at = await toScreen(page, btn.x, btn.y);
   await page.touchscreen.tap(at.x, at.y);
   await page.waitForTimeout(100);
   const paused = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     return { paused: p.scene.paused, menu: p.scene.pauseMenu.visible, rows: p.game.boards[0].stats.manualRows };
   });
   expect(paused).toEqual({ paused: true, menu: true, rows: 0 });
 
   // ポーズ画面の SOUND を押すとミュートになり、localStorage に残る
   const sound = await page.evaluate(() => {
-    const scene = (window as any).__panepon.scene;
+    const scene = (window as any).__swaprise.scene;
     const b = scene.pauseButtons.find((x: any) => x.text.startsWith("SOUND"));
     return { x: b.x + scene.pauseMenu.x, y: b.y + scene.pauseMenu.y };
   });
@@ -75,29 +75,29 @@ test("画面のポーズボタンで止まり、ポーズ画面の RESUME で再
   await page.touchscreen.tap(soundAt.x, soundAt.y);
   await page.waitForTimeout(100);
   const muted = await page.evaluate(() => {
-    const scene = (window as any).__panepon.scene;
+    const scene = (window as any).__swaprise.scene;
     const b = scene.pauseButtons.find((x: any) => x.text.startsWith("SOUND"));
-    return { text: b.text, stored: localStorage.getItem("panepon.mute.v1"), stillPaused: scene.paused };
+    return { text: b.text, stored: localStorage.getItem("swaprise.mute.v1"), stillPaused: scene.paused };
   });
   expect(muted).toEqual({ text: "SOUND: OFF", stored: "on", stillPaused: true });
 
   const resume = await page.evaluate(() => {
-    const scene = (window as any).__panepon.scene;
+    const scene = (window as any).__swaprise.scene;
     const b = scene.pauseButtons.find((x: any) => x.text === "RESUME");
     return { x: b.x + scene.pauseMenu.x, y: b.y + scene.pauseMenu.y };
   });
   const resumeAt = await toScreen(page, resume.x, resume.y);
   await page.touchscreen.tap(resumeAt.x, resumeAt.y);
   await page.waitForTimeout(200);
-  expect(await page.evaluate(() => (window as any).__panepon.scene.paused)).toBe(false);
+  expect(await page.evaluate(() => (window as any).__swaprise.scene.paused)).toBe(false);
 });
 
 test("回転すると横持ち用のレイアウトに置き直し、ゲームは続く", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(300);
   const before = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     return { frame: p.game.boards[0].frame, portrait: p.layout.portrait, text: p.game.boards[0].toString() };
   });
   expect(before.portrait).toBe(true);
@@ -105,7 +105,7 @@ test("回転すると横持ち用のレイアウトに置き直し、ゲーム�
   await page.setViewportSize({ width: pixel.viewport.height, height: pixel.viewport.width });
   await page.waitForTimeout(500);
   const after = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
     return {
       frame: p.game.boards[0].frame,
@@ -129,43 +129,43 @@ test("回転すると横持ち用のレイアウトに置き直し、ゲーム�
   // 戻すと縦持ちに戻る
   await page.setViewportSize({ width: pixel.viewport.width, height: pixel.viewport.height });
   await page.waitForTimeout(500);
-  expect(await page.evaluate(() => (window as any).__panepon.layout.portrait)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__swaprise.layout.portrait)).toBe(true);
 });
 
 test("盤面を2本指で押している間はせり上げ。離すと止まる", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
   // 揃いのない静かな盤面にして、消去でせり上げが止まらないようにする
   await page.evaluate(() => {
-    (window as any).__panepon.game.boards[0].setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
+    (window as any).__swaprise.game.boards[0].setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
   });
   const view = await page.evaluate(() => {
-    const v = (window as any).__panepon.scene.views[0];
+    const v = (window as any).__swaprise.scene.views[0];
     return { ox: v.ox, oy: v.oy };
   });
   const a = await toScreen(page, view.ox + 48, view.oy + 200);
   const b = await toScreen(page, view.ox + 144, view.oy + 200);
   const cdp = await page.context().newCDPSession(page);
-  const rowsBefore = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+  const rowsBefore = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
   // 入れ替えが起きていないことは、最下段の並びがそのまま（せり上がって1段上がるだけ）なことで確かめる
   const bottomBefore = await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     return [0, 1, 2, 3, 4, 5].map((x) => b.cell(x, 0).kind);
   });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: a.x, y: a.y, id: 0 }] });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: a.x, y: a.y, id: 0 }, { x: b.x, y: b.y, id: 1 }] });
   await page.waitForTimeout(500);
-  expect(await page.evaluate(() => (window as any).__panepon.scene.touches[0].raising)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising)).toBe(true);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await page.waitForTimeout(100);
-  const rowsAfter = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+  const rowsAfter = await page.evaluate(() => (window as any).__swaprise.game.boards[0].stats.manualRows);
   expect(rowsAfter).toBeGreaterThan(rowsBefore);
-  expect(await page.evaluate(() => (window as any).__panepon.scene.touches[0].raising)).toBe(false);
+  expect(await page.evaluate(() => (window as any).__swaprise.scene.touches[0].raising)).toBe(false);
   // 2本指で押しただけでは入れ替えが起きない
   const bottomAfter = await page.evaluate(
     (rows) => {
-      const b = (window as any).__panepon.game.boards[0];
+      const b = (window as any).__swaprise.game.boards[0];
       return [0, 1, 2, 3, 4, 5].map((x) => b.cell(x, rows).kind);
     },
     rowsAfter - rowsBefore,
@@ -185,10 +185,10 @@ test.describe("iPhone 14", () => {
 
   test("縦持ちレイアウトになり、canvas は DPR 3 で作られて中央に置かれる", async ({ page }) => {
     await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-    await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+    await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
     await page.waitForTimeout(200);
     const info = await page.evaluate(() => {
-      const p = (window as any).__panepon;
+      const p = (window as any).__swaprise;
       const canvas = document.querySelector("canvas")!;
       const rect = canvas.getBoundingClientRect();
       return {
@@ -209,10 +209,10 @@ test.describe("iPhone 14", () => {
 test("横持ちの 2P 対戦は盤面を左右の端に寄せ、HUD を内側に置く", async ({ page }) => {
   await page.setViewportSize({ width: pixel.viewport.height, height: pixel.viewport.width });
   await page.goto("/?mode=versus&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
   const info = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
     const s = rect.width / p.layout.width;
     const [a, b] = p.scene.views;
@@ -238,12 +238,12 @@ test("横持ちの 2P 対戦は盤面を左右の端に寄せ、HUD を内側に
 
 test("SETTINGS の FULL SCREEN ボタンで全画面の希望が保存され、もう一度押すと戻る", async ({ page }) => {
   await page.goto("/?bgm=0");
-  await page.waitForFunction(() => Boolean((window as any).__paneponScenes?.menu));
+  await page.waitForFunction(() => Boolean((window as any).__swapriseScenes?.menu));
   await page.waitForTimeout(300);
-  await page.evaluate(() => (window as any).__paneponScenes.menu.children.getByName("settings").emit("pointerdown"));
+  await page.evaluate(() => (window as any).__swapriseScenes.menu.children.getByName("settings").emit("pointerdown"));
   await page.waitForTimeout(200);
   const btn = await page.evaluate(() => {
-    const scene = (window as any).__paneponScenes.menu;
+    const scene = (window as any).__swapriseScenes.menu;
     const b = scene.children.getByName("settings-panel")?.list.find((o: any) => o.name === "fullscreen");
     if (!b) return null;
     const rect = document.querySelector("canvas")!.getBoundingClientRect();
@@ -256,15 +256,15 @@ test("SETTINGS の FULL SCREEN ボタンで全画面の希望が保存され、�
   await page.touchscreen.tap(at.x, at.y);
   await page.waitForTimeout(300);
   const on = await page.evaluate(() => ({
-    stored: localStorage.getItem("panepon.fullscreen.v1"),
+    stored: localStorage.getItem("swaprise.fullscreen.v1"),
     active: Boolean(document.fullscreenElement),
-    text: (window as any).__paneponScenes.menu.children.getByName("settings-panel").list.find((o: any) => o.name === "fullscreen").text,
+    text: (window as any).__swapriseScenes.menu.children.getByName("settings-panel").list.find((o: any) => o.name === "fullscreen").text,
   }));
   expect(on.stored).toBe("1");
   // headless でも Fullscreen API は通る。通ったならボタンの表示が ON に変わる
   if (on.active) expect(on.text).toBe("FULL SCREEN: ON");
   await page.touchscreen.tap(at.x, at.y);
   await page.waitForTimeout(300);
-  const off = await page.evaluate(() => ({ stored: localStorage.getItem("panepon.fullscreen.v1"), active: Boolean(document.fullscreenElement) }));
+  const off = await page.evaluate(() => ({ stored: localStorage.getItem("swaprise.fullscreen.v1"), active: Boolean(document.fullscreenElement) }));
   expect(off).toEqual({ stored: "0", active: false });
 });

@@ -3,14 +3,14 @@ import { expect, test, type Page } from "@playwright/test";
 const SHOT = "e2e/__screenshots__";
 
 async function waitForGame(page: Page): Promise<void> {
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game), null, { timeout: 15_000 });
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game), null, { timeout: 15_000 });
   // 数フレーム描画させる
   await page.waitForTimeout(300);
 }
 
 function boardState(page: Page, index = 0) {
   return page.evaluate((i) => {
-    const b = (window as any).__panepon.game.boards[i];
+    const b = (window as any).__swaprise.game.boards[i];
     return {
       cursor: { ...b.cursor },
       score: b.score,
@@ -64,7 +64,7 @@ test("エンドレス: カーソル移動と入れ替えが盤面に反映され
   expect(low.cursor.y).toBe(before.cursor.y - 2);
 
   const swapped = await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     const { x, y } = b.cursor;
     const a = b.cell(x, y).kind;
     const c = b.cell(x + 1, y).kind;
@@ -73,7 +73,7 @@ test("エンドレス: カーソル移動と入れ替えが盤面に反映され
   await page.keyboard.press("z");
   await page.waitForTimeout(150);
   const after = await page.evaluate(({ x, y }) => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     return { a: b.cell(x, y).kind, c: b.cell(x + 1, y).kind };
   }, swapped);
   // 少なくとも一方は入れ替わっている（同じ柄同士や落下で変わらない場合を除く）
@@ -88,7 +88,7 @@ test("エンドレス: 3連鎖の盤面を仕込んで得点220点と吹き出�
   await waitForGame(page);
   // 描画ループを止めて、決定論的に tick を進める
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     p.scene.scene.pause();
     const b = p.game.boards[0];
     b.setColumns([
@@ -106,23 +106,23 @@ test("エンドレス: 3連鎖の盤面を仕込んで得点220点と吹き出�
   const chains: number[] = [];
   const tick = (inputs: any[]) =>
     page.evaluate((ins) => {
-      const p = (window as any).__panepon;
+      const p = (window as any).__swaprise;
       p.tick(ins);
       return p.game.boards[0].events.filter((e: any) => e.type === "match").map((e: any) => e.chain);
     }, inputs);
   chains.push(...(await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }])));
   for (let i = 0; i < 20; i++) chains.push(...(await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }])));
   // 最初の消去（chain 1）が起きた直後の画面
-  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.evaluate(() => (window as any).__swaprise.scene.scene.resume());
   await page.waitForTimeout(50);
-  await page.evaluate(() => (window as any).__panepon.scene.scene.pause());
+  await page.evaluate(() => (window as any).__swaprise.scene.scene.pause());
   await page.screenshot({ path: `${SHOT}/chain-start.png` });
   for (let i = 0; i < 380; i++) chains.push(...(await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }])));
   expect(chains).toEqual([1, 2, 3]);
   const s = await boardState(page);
   expect(s.score).toBe(220);
   expect(s.maxChain).toBe(3);
-  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.evaluate(() => (window as any).__swaprise.scene.scene.resume());
   await page.waitForTimeout(100);
   await page.screenshot({ path: `${SHOT}/chain-end.png` });
 });
@@ -130,10 +130,10 @@ test("エンドレス: 3連鎖の盤面を仕込んで得点220点と吹き出�
 test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page }) => {
   await page.goto("/?mode=versus&seed=11&bgm=0&countdown=0");
   await waitForGame(page);
-  const n = await page.evaluate(() => (window as any).__panepon.game.boards.length);
+  const n = await page.evaluate(() => (window as any).__swaprise.game.boards.length);
   expect(n).toBe(2);
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     p.scene.scene.pause();
     const b = p.game.boards[0];
     // 縦4個同時消し → 相手に幅3の板
@@ -141,13 +141,13 @@ test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page 
     b.cursor.x = 0;
     b.cursor.y = 2;
   });
-  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__panepon.tick(ins), inputs);
+  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__swaprise.tick(ins), inputs);
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   for (let i = 0; i < 40; i++) {
     await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   }
   const p2 = await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[1];
+    const b = (window as any).__swaprise.game.boards[1];
     return { pending: b.pendingGarbage.length, garbage: b.garbage.size };
   });
   expect(p2.pending + p2.garbage).toBeGreaterThanOrEqual(1);
@@ -156,13 +156,13 @@ test("対戦: 2つの盤面が出て、攻撃が相手に届く", async ({ page 
     await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   }
   const g = await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[1];
+    const b = (window as any).__swaprise.game.boards[1];
     return [...b.garbage.values()].map((x: any) => ({ w: x.width, h: x.height, y: x.y, state: x.state }));
   });
   expect(g.length).toBe(1);
   expect(g[0].w).toBe(3);
   expect(g[0].state).toBe("idle");
-  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.evaluate(() => (window as any).__swaprise.scene.scene.resume());
   await page.waitForTimeout(100);
   await page.screenshot({ path: `${SHOT}/versus.png` });
 });
@@ -171,7 +171,7 @@ test("対戦: ビックリパネルと灰色のおじゃまが描画される", 
   await page.goto("/?mode=versus&seed=11&bgm=0&countdown=0");
   await waitForGame(page);
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     p.scene.scene.pause();
     const [a, b] = p.game.boards;
     a.setColumns([[6], [6], [1], [6], [2, 6], [3, 0]]);
@@ -182,17 +182,17 @@ test("対戦: ビックリパネルと灰色のおじゃまが描画される", 
     b.placeGarbage(0, 2, 6, 1, "normal");
     b.placeGarbage(0, 3, 6, 1, "shock");
   });
-  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__panepon.tick(ins), inputs);
+  const tick = (inputs: any[]) => page.evaluate((ins) => (window as any).__swaprise.tick(ins), inputs);
   await tick([{ moveX: 0, moveY: 0, swap: true, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   for (let i = 0; i < 6; i++) {
     await tick([{ moveX: 0, moveY: 0, swap: false, raise: false }, { moveX: 0, moveY: 0, swap: false, raise: false }]);
   }
   // 3枚消しの灰色の板が相手に届く（消去中でない相手の盤面には即座に投下される）
   const shockBlocks = await page.evaluate(() =>
-    [...(window as any).__panepon.game.boards[1].garbage.values()].filter((g: any) => g.type === "shock").length,
+    [...(window as any).__swaprise.game.boards[1].garbage.values()].filter((g: any) => g.type === "shock").length,
   );
   expect(shockBlocks).toBe(3);
-  await page.evaluate(() => (window as any).__panepon.scene.scene.resume());
+  await page.evaluate(() => (window as any).__swaprise.scene.scene.resume());
   await page.waitForTimeout(100);
   await page.screenshot({ path: `${SHOT}/shock.png` });
 });
@@ -201,13 +201,13 @@ test("エンドレス: 天井まで積むとゲームオーバーの表示にな
   await page.goto("/?mode=endless&seed=3&bgm=0&countdown=0");
   await waitForGame(page);
   await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     const b = p.game.boards[0];
     const col: number[] = [];
     for (let r = 0; r < 12; r++) col.push(r % 2);
     b.setColumns([col, [1], [2], [3], [4], [0]]);
   });
-  await page.waitForFunction(() => (window as any).__panepon.game.finished, null, { timeout: 10_000 });
+  await page.waitForFunction(() => (window as any).__swaprise.game.finished, null, { timeout: 10_000 });
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${SHOT}/gameover.png` });
   const s = await boardState(page);

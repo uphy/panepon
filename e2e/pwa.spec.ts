@@ -30,6 +30,6 @@ test("manifest にアイコンがあり、Service Worker が登録されてオ�
   await page.keyboard.press("Enter");
   await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game), null, { timeout: 15_000 });
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game), null, { timeout: 15_000 });
   await context.setOffline(false);
 });

@@ -6,7 +6,7 @@ export interface LastMode {
   cpuLevel?: CpuLevel;
 }
 
-const KEY = "panepon.lastmode.v1";
+const KEY = "swaprise.lastmode.v1";
 
 export function loadLastMode(): LastMode | null {
   try {

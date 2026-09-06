@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icons/*.png", "vibrate-test.html"],
       manifest: {
-        name: "Panepon clone",
-        short_name: "Panepon",
-        description: "Panel de Pon style action puzzle",
+        name: "Swaprise",
+        short_name: "Swaprise",
+        description: "Swap & match action puzzle",
         start_url: "./",
         scope: "./",
         display: "standalone",

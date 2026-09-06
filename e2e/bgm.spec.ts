@@ -11,14 +11,14 @@ async function setHidden(page: Page, hidden: boolean): Promise<void> {
 
 function bgmState(page: Page) {
   return page.evaluate(() => {
-    const a = (window as any).__paneponAudio;
+    const a = (window as any).__swapriseAudio;
     return { playing: a.bgm?.playing ?? null, tune: a.bgm?.tune ?? null, danger: a.danger };
   });
 }
 
 test("危険状態ではピンチの曲に切り替わり、抜けるとゲーム曲に戻る。終了後は止まり、メニューではメニュー曲", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   // AudioContext はユーザー操作のあとでしか動かないので、1回クリックしてから始める
   await page.mouse.click(10, 10);
   await page.waitForTimeout(300);
@@ -26,7 +26,7 @@ test("危険状態ではピンチの曲に切り替わり、抜けるとゲー�
 
   // 上2段にパネルを入れて危険状態にする
   await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0], [1], [2], [3], [4], [0]]);
   });
   await page.waitForTimeout(300);
@@ -35,7 +35,7 @@ test("危険状態ではピンチの曲に切り替わり、抜けるとゲー�
 
   // 低くしてピンチを抜けると、ゲーム曲に戻る
   await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1, 2], [1], [2], [3], [4], [0]]);
   });
   await page.waitForTimeout(300);
@@ -43,10 +43,10 @@ test("危険状態ではピンチの曲に切り替わり、抜けるとゲー�
 
   // 天井まで積んで終わらせる
   await page.evaluate(() => {
-    const b = (window as any).__panepon.game.boards[0];
+    const b = (window as any).__swaprise.game.boards[0];
     b.setColumns([[0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1], [1], [2], [3], [4], [0]]);
   });
-  await page.waitForFunction(() => (window as any).__panepon.game.finished, null, { timeout: 15_000 });
+  await page.waitForFunction(() => (window as any).__swaprise.game.finished, null, { timeout: 15_000 });
   await page.waitForTimeout(200);
   expect(await bgmState(page)).toEqual({ playing: null, tune: null, danger: false });
 

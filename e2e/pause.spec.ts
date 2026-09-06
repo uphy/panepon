@@ -11,15 +11,15 @@ async function setHidden(page: import("@playwright/test").Page, hidden: boolean)
 
 test("画面が隠れるとポーズし、BGM が止まる。戻ってタップすると再開する", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(300);
-  const before = await page.evaluate(() => (window as any).__panepon.game.boards[0].frame);
+  const before = await page.evaluate(() => (window as any).__swaprise.game.boards[0].frame);
   expect(before).toBeGreaterThan(0);
 
   await setHidden(page, true);
   await page.waitForTimeout(100);
   const hidden = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     return { paused: p.scene.paused, frame: p.game.boards[0].frame, pauseVisible: p.scene.pauseMenu.visible };
   });
   expect(hidden.paused).toBe(true);
@@ -29,7 +29,7 @@ test("画面が隠れるとポーズし、BGM が止まる。戻ってタップ�
   await page.waitForTimeout(300);
   // 戻っただけでは再開しない
   const afterVisible = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     return { paused: p.scene.paused, frame: p.game.boards[0].frame };
   });
   expect(afterVisible.paused).toBe(true);
@@ -39,7 +39,7 @@ test("画面が隠れるとポーズし、BGM が止まる。戻ってタップ�
   await page.mouse.click(40, 40);
   await page.waitForTimeout(300);
   const resumed = await page.evaluate(() => {
-    const p = (window as any).__panepon;
+    const p = (window as any).__swaprise;
     return { paused: p.scene.paused, frame: p.game.boards[0].frame };
   });
   expect(resumed.paused).toBe(false);
@@ -48,12 +48,12 @@ test("画面が隠れるとポーズし、BGM が止まる。戻ってタップ�
 
 test("window の blur でもポーズする", async ({ page }) => {
   await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
-  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForFunction(() => Boolean((window as any).__swaprise?.game));
   await page.waitForTimeout(200);
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await page.waitForTimeout(100);
-  expect(await page.evaluate(() => (window as any).__panepon.scene.paused)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__swaprise.scene.paused)).toBe(true);
   await page.keyboard.press("p");
   await page.waitForTimeout(100);
-  expect(await page.evaluate(() => (window as any).__panepon.scene.paused)).toBe(false);
+  expect(await page.evaluate(() => (window as any).__swaprise.scene.paused)).toBe(false);
 });

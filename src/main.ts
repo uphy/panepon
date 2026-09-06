@@ -1,3 +1,5 @@
+// 旧名称のキーに残った記録・設定を新キーへ写す。音声などが import 時に localStorage を読むので、どの import よりも先に置く
+import "./render/storage";
 import Phaser from "phaser";
 import { registerSW } from "virtual:pwa-register";
 import { GameScene } from "./render/GameScene";
