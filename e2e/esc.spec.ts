@@ -14,13 +14,15 @@ test("メニューから始めたゲームを Esc で抜けると、メニュー
     page.evaluate(() => (window as any).__panepon.scene.scene.manager.getScenes(true).map((s: any) => s.scene.key));
   expect(await active()).toEqual(["menu"]);
   expect(errors).toEqual([]);
-  // メニューが動いている（カーソル移動と再開始ができる）
+  // メニューが動いている（カーソル移動と再開始ができる）。2番目の項目は TIME ATTACK
   await page.keyboard.press("ArrowDown");
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => (window as any).__paneponScenes.menu.index)).toBe(1);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(500);
   expect(await active()).toEqual(["game"]);
   const mode = await page.evaluate(() => (window as any).__panepon.game.mode);
-  expect(mode).toBe("cpu");
+  expect(mode).toBe("timeattack");
   expect(errors).toEqual([]);
 });
 
