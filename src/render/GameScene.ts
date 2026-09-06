@@ -329,6 +329,7 @@ export class GameScene extends Phaser.Scene {
 
   private toMenu(): void {
     audio.stopBgm();
+    audio.setDanger(false);
     this.touches.forEach((t) => t.destroy());
     this.touches = [];
     if (this.historyPushed) {
@@ -420,6 +421,10 @@ export class GameScene extends Phaser.Scene {
     this.ended = true;
     this.pauseButton.setVisible(false);
     const g = this.game_;
+    // 曲を止めて勝敗の音だけにする。危険状態のテンポはここで戻す（残すとメニューの曲まで速くなる）
+    audio.stopBgm();
+    audio.setDanger(false);
+    this.wasDanger = false;
     // エンドレスと CPU に負けたときは負けの音、対戦は誰かが勝つので勝ちの音。タイムアタックは時間切れなら完走の音
     const humanWon = this.mode === "versus" ? g.winner >= 0 : this.mode === "cpu" ? g.winner === 0 : g.timeUp;
     if (humanWon) {

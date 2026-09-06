@@ -2,6 +2,8 @@ import { GameAudio } from "./audio";
 
 /** シーン間で共有する音声。?bgm=0 で BGM を止められる（e2e 用）。 */
 export const audio = new GameAudio();
+// e2e 用。曲の状態（鳴っている曲・危険テンポ）を外から調べられるようにする
+(window as unknown as { __paneponAudio: GameAudio }).__paneponAudio = audio;
 audio.bgmEnabled = new URLSearchParams(location.search).get("bgm") !== "0";
 
 // ブラウザは AudioContext の開始をユーザー操作の中でしか許さない。

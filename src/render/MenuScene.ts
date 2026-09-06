@@ -201,7 +201,21 @@ export class MenuScene extends Phaser.Scene {
     kb.on("keydown", () => audio.start());
     this.input.on("pointerdown", () => audio.start());
     audio.start();
+    audio.setDanger(false);
     audio.startBgm("menu");
+    // 画面が隠れたら（画面オフ・別アプリ）曲を止め、戻ったら鳴らし直す。ゲーム中は GameScene がポーズと一緒に扱う
+    const onHidden = (): void => audio.suspend();
+    const onVisible = (): void => audio.resume();
+    this.game.events.on("hidden", onHidden);
+    this.game.events.on("blur", onHidden);
+    this.game.events.on("visible", onVisible);
+    this.game.events.on("focus", onVisible);
+    this.events.once("shutdown", () => {
+      this.game.events.off("hidden", onHidden);
+      this.game.events.off("blur", onHidden);
+      this.game.events.off("visible", onVisible);
+      this.game.events.off("focus", onVisible);
+    });
     kb.on("keydown-UP", () => this.moveIndex(-1));
     kb.on("keydown-DOWN", () => this.moveIndex(1));
     kb.on("keydown-W", () => this.moveIndex(-1));
