@@ -2,6 +2,7 @@ import {
   COLS,
   DANGER_ROW,
   DEFAULT_KINDS,
+  FRAMES_PER_LEVEL,
   PANELS_PER_LEVEL,
   ROWS,
   SHOCK_KIND,
@@ -295,6 +296,7 @@ export class Board {
     this.findMatches();
     this.clearStaleChainFlags();
     this.dropPendingGarbage();
+    this.updateLevel();
     this.updateRise(input);
     this.updateChainEnd();
     this.updateStatus();
@@ -823,13 +825,21 @@ export class Board {
     });
     this.emit({ type: "match", panels: n, chain: chainNow, x: list[0].x, y: list[0].y, score: gained });
     this.triggerGarbageTransform(list);
+    this.updateLevel();
+  }
 
-    if (this.speedUp) {
-      const lv = Math.min(99, this.startLevel + Math.floor(this.panelsCleared / PANELS_PER_LEVEL));
-      if (lv !== this.level) {
-        this.level = lv;
-        this.emit({ type: "levelUp", level: lv });
-      }
+  /**
+   * スピードレベル。消した枚数（PANELS_PER_LEVEL 枚ごと）と経過時間（FRAMES_PER_LEVEL ごと）の高い方で決まり、下がらない。
+   * エンドレス・タイムアタック（speedUp）だけ。対戦・パズルは開始レベルのまま。
+   */
+  private updateLevel(): void {
+    if (!this.speedUp) return;
+    const byPanels = this.startLevel + Math.floor(this.panelsCleared / PANELS_PER_LEVEL);
+    const byTime = this.startLevel + Math.floor(this.frame / FRAMES_PER_LEVEL);
+    const lv = Math.min(99, Math.max(this.level, byPanels, byTime));
+    if (lv !== this.level) {
+      this.level = lv;
+      this.emit({ type: "levelUp", level: lv });
     }
   }
 
