@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Board, COLS, CpuPlayer, Game, NO_INPUT, ROWS, type CpuLevel } from "../../src/core";
+import { Board, COLS, CPU_PARAMS, CpuPlayer, Game, NO_INPUT, ROWS, type CpuLevel } from "../../src/core";
 
 function playAlone(level: CpuLevel, seed: number, frames: number): Board {
   const b = new Board({ seed, speedLevel: 5 });
@@ -134,8 +134,10 @@ describe("CPU が止まらない", () => {
           if (b.events.some((e) => e.type === "swap")) lastSwap = b.frame;
           worst = Math.max(worst, b.frame - lastSwap);
         }
-        // easy は思考100F・移動16F/マスなので、遠くまでカーソルを運ぶと4秒を少し超える。止まっているわけではない
-        expect(worst, `${level} seed=${seed}`).toBeLessThanOrEqual(level === "easy" ? 300 : 240);
+        // 上限は「思考の待ち ＋ カーソルを盤面の端から端まで運ぶ時間」。easy は思考100F・移動16F/マスなので7秒ほどになる
+        const p = CPU_PARAMS[level];
+        const limit = Math.max(240, p.thinkDelay + p.moveInterval * (COLS + ROWS) + 4);
+        expect(worst, `${level} seed=${seed}`).toBeLessThanOrEqual(limit);
       }
     }
   });

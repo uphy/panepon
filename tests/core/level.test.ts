@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Board, FRAMES_PER_LEVEL, PANELS_PER_LEVEL } from "../../src/core";
+import { Board, FRAMES_PER_LEVEL, Game, NO_INPUT, PANELS_PER_LEVEL } from "../../src/core";
 import { run } from "./helpers";
 
 function board(speedUp: boolean, speedLevel = 1): Board {
@@ -44,10 +44,29 @@ describe("スピードレベル（エンドレス・タイムアタック）", (
     expect(b.level).toBe(99);
   });
 
-  it("対戦・パズル（speedUp なし）では時間が経っても枚数を消しても上がらない", () => {
+  it("パズル（speedUp なし）では時間が経っても枚数を消しても上がらない", () => {
     const b = board(false);
     b.panelsCleared = 100;
     run(b, FRAMES_PER_LEVEL * 3);
     expect(b.level).toBe(1);
+  });
+
+  it("対戦では2つの盤面のレベルを高い方に揃える。片方が多く消せば両方が速くなる", () => {
+    const game = new Game({ mode: "versus", seed: 1 });
+    const [a, b] = game.boards;
+    a.panelsCleared = PANELS_PER_LEVEL * 3;
+    game.tick([NO_INPUT, NO_INPUT]);
+    expect(a.level).toBe(4);
+    expect(b.level).toBe(4);
+    // 時間でも両方が上がる
+    for (let f = 0; f < FRAMES_PER_LEVEL * 4; f++) game.tick([NO_INPUT, NO_INPUT]);
+    expect(a.level).toBe(5);
+    expect(b.level).toBe(5);
+  });
+
+  it("パズルではレベルが上がらない", () => {
+    const game = new Game({ mode: "puzzle", seed: 1, stage: 0 });
+    for (let f = 0; f < FRAMES_PER_LEVEL * 2; f++) game.tick([NO_INPUT]);
+    expect(game.boards[0].level).toBe(1);
   });
 });

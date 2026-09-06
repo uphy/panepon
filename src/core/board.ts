@@ -830,17 +830,21 @@ export class Board {
 
   /**
    * スピードレベル。消した枚数（PANELS_PER_LEVEL 枚ごと）と経過時間（FRAMES_PER_LEVEL ごと）の高い方で決まり、下がらない。
-   * エンドレス・タイムアタック（speedUp）だけ。対戦・パズルは開始レベルのまま。
+   * パズル以外（speedUp）。対戦では Game が2つの盤面を高い方に揃える。
    */
   private updateLevel(): void {
     if (!this.speedUp) return;
     const byPanels = this.startLevel + Math.floor(this.panelsCleared / PANELS_PER_LEVEL);
     const byTime = this.startLevel + Math.floor(this.frame / FRAMES_PER_LEVEL);
-    const lv = Math.min(99, Math.max(this.level, byPanels, byTime));
-    if (lv !== this.level) {
-      this.level = lv;
-      this.emit({ type: "levelUp", level: lv });
-    }
+    this.raiseLevel(Math.max(byPanels, byTime));
+  }
+
+  /** スピードレベルを lv まで上げる。今より低ければ何もしない。対戦で相手の盤面に揃えるのにも使う。 */
+  raiseLevel(lv: number): void {
+    const next = Math.min(99, Math.max(this.level, lv));
+    if (next === this.level) return;
+    this.level = next;
+    this.emit({ type: "levelUp", level: next });
   }
 
   /** 着地して揃わなかったパネルの連鎖フラグを落とす。真下が入れ替え中なら判定を待つ。 */

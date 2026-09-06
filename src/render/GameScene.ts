@@ -85,7 +85,7 @@ export class GameScene extends Phaser.Scene {
       this.vsText = null;
     } else {
       const isCpu = this.mode === "cpu";
-      this.views.push(new BoardView(this, boards[0], "1P", false));
+      this.views.push(new BoardView(this, boards[0], "1P", true));
       this.views.push(new BoardView(this, boards[1], isCpu ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P", false));
       this.inputs.push(new PlayerInput(this, P1_KEYS, 0));
       if (!isCpu) this.inputs.push(new PlayerInput(this, P2_KEYS, 1));

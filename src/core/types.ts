@@ -86,7 +86,7 @@ export interface BoardOptions {
   kinds?: number;
   /** 開始スピードレベル（1..99）。 */
   speedLevel?: number;
-  /** 消去枚数でスピードが上がるか（エンドレス用）。 */
+  /** 消去枚数と経過時間でスピードが上がるか（パズル以外）。 */
   speedUp?: boolean;
   /** 初期盤面の高さ（各列この段数前後）。0で空盤面。 */
   initialHeight?: number;

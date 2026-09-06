@@ -59,10 +59,11 @@ export class Game {
       this.boards = [boardForStage(this.puzzle, opts.seed)];
       return;
     }
+    // パズル以外はどのモードもスピードレベルが上がる（消した枚数と経過時間の高い方）
     const common: Omit<BoardOptions, "seed"> = {
       kinds: opts.kinds,
       speedLevel: opts.speedLevel,
-      speedUp: opts.mode === "endless" || opts.mode === "timeattack",
+      speedUp: true,
     };
     if (opts.mode === "endless" || opts.mode === "timeattack") {
       this.boards = [new Board({ ...common, seed: opts.seed })];
@@ -83,6 +84,10 @@ export class Game {
     this.boards.forEach((b, i) => b.tick(resolved[i]));
     if (this.boards.length === 2) {
       const [a, b] = this.boards;
+      // 対戦では2つの盤面のスピードを同じにする。多く消した側に合わせて両方が速くなる
+      const lv = Math.max(a.level, b.level);
+      a.raiseLevel(lv);
+      b.raiseLevel(lv);
       if (a.attacksOut.length) b.pendingGarbage.push(...a.attacksOut);
       if (b.attacksOut.length) a.pendingGarbage.push(...b.attacksOut);
       if (a.gameOver || b.gameOver) {
