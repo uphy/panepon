@@ -125,3 +125,44 @@ test("回転すると横向きのレイアウトに置き直し、ゲームは�
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as any).__panepon.layout.portrait)).toBe(true);
 });
+
+test("盤面を2本指で押している間はせり上げ。離すと止まる", async ({ page }) => {
+  await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
+  await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+  await page.waitForTimeout(200);
+  // 揃いのない静かな盤面にして、消去でせり上げが止まらないようにする
+  await page.evaluate(() => {
+    (window as any).__panepon.game.boards[0].setColumns([[0, 1], [2, 3], [4, 0], [1, 2], [3, 4], [0, 1]]);
+  });
+  const view = await page.evaluate(() => {
+    const v = (window as any).__panepon.scene.views[0];
+    return { ox: v.ox, oy: v.oy };
+  });
+  const a = await toScreen(page, view.ox + 48, view.oy + 200);
+  const b = await toScreen(page, view.ox + 144, view.oy + 200);
+  const cdp = await page.context().newCDPSession(page);
+  const rowsBefore = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+  // 入れ替えが起きていないことは、最下段の並びがそのまま（せり上がって1段上がるだけ）なことで確かめる
+  const bottomBefore = await page.evaluate(() => {
+    const b = (window as any).__panepon.game.boards[0];
+    return [0, 1, 2, 3, 4, 5].map((x) => b.cell(x, 0).kind);
+  });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: a.x, y: a.y, id: 0 }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: a.x, y: a.y, id: 0 }, { x: b.x, y: b.y, id: 1 }] });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as any).__panepon.scene.touches[0].raising)).toBe(true);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(100);
+  const rowsAfter = await page.evaluate(() => (window as any).__panepon.game.boards[0].stats.manualRows);
+  expect(rowsAfter).toBeGreaterThan(rowsBefore);
+  expect(await page.evaluate(() => (window as any).__panepon.scene.touches[0].raising)).toBe(false);
+  // 2本指で押しただけでは入れ替えが起きない
+  const bottomAfter = await page.evaluate(
+    (rows) => {
+      const b = (window as any).__panepon.game.boards[0];
+      return [0, 1, 2, 3, 4, 5].map((x) => b.cell(x, rows).kind);
+    },
+    rowsAfter - rowsBefore,
+  );
+  expect(bottomAfter).toEqual(bottomBefore);
+});

@@ -108,7 +108,7 @@ export class MenuScene extends Phaser.Scene {
       .setName("records");
 
     const help = layout.touch
-      ? ["Tap between two panels to swap them", "Drag a panel sideways to swap", "Hold outside the board to raise", "Pause with the ❚❚ button"]
+      ? ["Tap between two panels to swap them", "Drag a panel sideways to swap", "Hold outside the board, or two fingers on it, to raise", "Pause with the ❚❚ button"]
       : [
           "P1: ←↑↓→ move   Z swap   X raise        P2: WASD move   F swap   H raise",
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",

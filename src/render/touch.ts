@@ -24,6 +24,7 @@ interface Drag {
  * - 2枚の境目をタップ: その2枚を入れ替える（1回で入れ替わる）
  * - パネルを横にドラッグ: その方向の隣と入れ替える。指を離さず引き続ければ連続で入れ替わる
  * - 盤面の外を押している間: 手動せり上げ（GameScene が盤面外の指を振り分けて raisePointers に入れる）
+ * - 盤面を2本の指で押している間: 手動せり上げ。縦持ちで盤面が画面幅いっぱいのときに、盤面の外を探さなくて済む
  *
  * 操作はキューに積み、poll() が1フレームに1つずつ取り出す。
  */
@@ -53,6 +54,7 @@ export class TouchInput {
     this.queue = [];
     this.drags.clear();
     this.raisePointers.clear();
+    this.onBoard.clear();
   }
 
   destroy(): void {
@@ -62,6 +64,7 @@ export class TouchInput {
     this.scene.input.off("pointerupoutside", this.onUp, this);
     this.drags.clear();
     this.raisePointers.clear();
+    this.onBoard.clear();
   }
 
   place(ox: number, oy: number, scale = 1): void {
@@ -90,9 +93,19 @@ export class TouchInput {
     return this.raisePointers.size > 0;
   }
 
+  /** 盤面の上に置かれている指。2本以上になったらせり上げに切り替える。 */
+  private readonly onBoard = new Set<number>();
+
   private onDown(p: Phaser.Input.Pointer): void {
     const cell = this.cellAt(p.worldX, p.worldY);
     if (!cell) return;
+    this.onBoard.add(p.id);
+    if (this.onBoard.size >= 2) {
+      // 2本目の指。入れ替えの途中でもやめて、離すまでせり上げにする
+      this.drags.clear();
+      for (const id of this.onBoard) this.raisePointers.add(id);
+      return;
+    }
     this.drags.set(p.id, { startX: p.worldX, startY: p.worldY, cellX: cell.x, cellY: cell.y, mode: "pending" });
   }
 
@@ -113,6 +126,7 @@ export class TouchInput {
   }
 
   private onUp(p: Phaser.Input.Pointer): void {
+    this.onBoard.delete(p.id);
     this.raisePointers.delete(p.id);
     const d = this.drags.get(p.id);
     if (!d) return;

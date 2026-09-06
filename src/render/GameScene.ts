@@ -8,6 +8,7 @@ import { haptics } from "./haptics";
 import { TouchInput } from "./touch";
 import { applyLayout } from "./hidpi";
 import { Button } from "./ui";
+import { wakeLock } from "./wakelock";
 import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, type Layout, layoutFor, sameLayout } from "./theme";
 
 const STEP_MS = 1000 / 60;
@@ -169,7 +170,10 @@ export class GameScene extends Phaser.Scene {
       }, 150);
     };
     window.addEventListener("resize", onResize);
+    // ゲーム中は画面をスリープさせない。メニューへ戻るときに外す
+    void wakeLock.request();
     this.events.once("shutdown", () => {
+      wakeLock.release();
       this.game.events.off("hidden", onHidden);
       this.game.events.off("blur", onHidden);
       window.removeEventListener("popstate", onPop);

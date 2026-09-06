@@ -21,17 +21,16 @@
 
 - [x] PWA としてインストールできる形にする
   - 対応: vite-plugin-pwa（generateSW, autoUpdate）で manifest と Service Worker を生成。アイコンは `tools/make-icons.mjs` が zlib だけで PNG を書く（192 / 512 / maskable 512 / apple-touch-icon 180）。`e2e/pwa.spec.ts` でオフライン再読込を確認
-- [ ] せり上げの操作をもう1つ用意する
-  - 今は「盤面の外を押し続ける」だけ。縦持ちのエンドレスは盤面が画面幅いっぱいなので、押せる場所が上下の余白に限られる
-  - 候補は専用の RAISE ボタン、盤面の2本指押し、上フリック。パネルドラッグと衝突しにくいのはボタンか2本指
+- [x] せり上げの操作をもう1つ用意する
+  - 対応: 盤面を2本の指で押している間もせり上げ（`TouchInput.onBoard`）。2本目が触れた時点で進行中のドラッグは捨てる。メニューの案内文に追記
 - [x] 結果画面と案内文をタッチ向けの言葉にする
   - 対応: 結果画面の「R / tap: restart   Esc: menu」を RETRY / MENU ボタンに、「tap / P to resume」をポーズ画面のボタンに置き換えた。キー操作の案内はタッチ端末では出さない
 - [x] 音の ON/OFF を画面に出す
   - 対応: メニューとポーズ画面に SOUND ボタン。iOS のサイレントスイッチの件は README に書く（次の項目でまとめて）
 - [x] iOS の長押し対策
   - 対応: `-webkit-touch-callout: none` を body に追加
-- [ ] 画面のスリープ防止
-  - Screen Wake Lock API を取り、`visibilitychange` で再取得する。Android Chrome と iOS 16.4 以降で動く
+- [x] 画面のスリープ防止
+  - 対応: `src/render/wakelock.ts`。GameScene の間だけ取り、画面が戻ったら取り直す。メニューへ戻ると外す
 
 ## 3. あれば良い（機能追加）
 
