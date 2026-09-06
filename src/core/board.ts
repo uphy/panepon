@@ -381,6 +381,11 @@ export class Board {
           if (isEmptyCell(below)) {
             const ct = clearTiming(this.level);
             this.startHover(c, r, cell.chain ? ct.hoverClear : ct.hoverSwap);
+          } else if (below.garbage >= 0) {
+            // おじゃまに乗っているパネルは、おじゃまと一緒に落ちる（おじゃまの猶予・落下に合わせる）
+            const g = this.garbage.get(below.garbage);
+            if (g?.state === "hover") this.startHover(c, r, Math.max(0, g.timer - 1));
+            else if (g?.state === "falling") this.startHover(c, r, 0);
           }
           continue;
         }
@@ -434,12 +439,44 @@ export class Board {
 
   // ---------------------------------------------------------------- garbage
 
-  private garbageSupported(g: GarbageBlock): boolean {
+  /** 真下に何かある（空でない）か。落下中のパネルがいる間は、その上に重ならないよう動けない。 */
+  private garbageBlocked(g: GarbageBlock): boolean {
     if (g.y === 0) return true;
     for (let c = g.x; c < g.x + g.width; c++) {
       if (!isEmptyCell(this.cells[g.y - 1][c])) return true;
     }
     return false;
+  }
+
+  /** 真下に支え（着地済みのパネルやおじゃま）があるか。浮遊中・落下中のものは支えにならない。 */
+  private garbageResting(g: GarbageBlock): boolean {
+    if (g.y === 0) return true;
+    for (let c = g.x; c < g.x + g.width; c++) {
+      if (this.blocksFall(this.cells[g.y - 1][c])) return true;
+    }
+    return false;
+  }
+
+  /**
+   * 真下で浮遊・落下しているものの状態。おじゃまはこれに合わせて動き出し、下のパネルと同じフレームに着地する。
+   * 原作ではおじゃまは下に積まれたパネルと一緒に落ちるので、着地の瞬間に揃ったパネルへ隣接していれば変身する。
+   */
+  private belowGarbage(g: GarbageBlock): { hover: number | null; falling: number | null } {
+    let hover: number | null = null;
+    let falling: number | null = null;
+    if (g.y === 0) return { hover, falling };
+    for (let c = g.x; c < g.x + g.width; c++) {
+      const cell = this.cells[g.y - 1][c];
+      if (isPanel(cell)) {
+        if (cell.state === "hover") hover = Math.max(hover ?? 0, cell.timer);
+        else if (cell.state === "falling") falling = Math.max(falling ?? 0, cell.fallTimer);
+      } else if (cell.garbage >= 0) {
+        const other = this.garbage.get(cell.garbage);
+        if (other?.state === "hover") hover = Math.max(hover ?? 0, other.timer);
+        else if (other?.state === "falling") falling = Math.max(falling ?? 0, other.fallTimer);
+      }
+    }
+    return { hover, falling };
   }
 
   private moveGarbageDown(g: GarbageBlock): void {
@@ -457,31 +494,41 @@ export class Board {
     for (const g of blocks) {
       if (g.state === "transforming") continue;
       if (g.state === "idle") {
-        if (!this.garbageSupported(g)) {
+        if (this.garbageResting(g)) continue;
+        // 支えが消えた。真下のパネルが浮遊中ならその残り時間に合わせ、落下中なら同じ落下カウントで続く
+        const below = this.belowGarbage(g);
+        if (below.hover !== null) {
+          g.state = "hover";
+          g.timer = below.hover;
+        } else if (below.falling !== null) {
+          g.state = "falling";
+          g.fallTimer = below.falling;
+        } else {
           g.state = "hover";
           g.timer = TIMING.hoverGarbage;
         }
         continue;
       }
       if (g.state === "hover") {
-        if (this.garbageSupported(g)) {
+        if (this.garbageResting(g)) {
           g.state = "idle";
-        } else if (--g.timer <= 0) {
-          g.state = "falling";
-          g.fallTimer = 0;
+          continue;
         }
-        continue;
+        if (--g.timer > 0) continue;
+        // 猶予が切れた。このフレームから落下のカウントを始める（下のパネルは updateCells → applyGravity で同じことをしている）
+        g.state = "falling";
+        g.fallTimer = 0;
       }
       // falling
-      if (this.garbageSupported(g)) {
+      if (this.garbageResting(g)) {
         this.landGarbage(g);
         continue;
       }
-      g.fallTimer++;
-      if (g.fallTimer >= TIMING.fallPerRow) {
+      if (g.fallTimer < TIMING.fallPerRow) g.fallTimer++;
+      if (g.fallTimer >= TIMING.fallPerRow && !this.garbageBlocked(g)) {
         g.fallTimer = 0;
         this.moveGarbageDown(g);
-        if (this.garbageSupported(g)) this.landGarbage(g);
+        if (this.garbageResting(g)) this.landGarbage(g);
       }
     }
   }
@@ -645,7 +692,7 @@ export class Board {
       }
     }
     this.garbage.set(id, g);
-    if (this.garbageSupported(g)) g.state = "idle";
+    if (this.garbageResting(g)) g.state = "idle";
     return g;
   }
 

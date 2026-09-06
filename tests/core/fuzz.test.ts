@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COLS, Game, Rng, SCORE_CAP, TOTAL_ROWS, isEmptyCell, type Input } from "../../src/core";
+import { COLS, Game, Rng, SCORE_CAP, TOTAL_ROWS, clearTiming, isEmptyCell, type Input } from "../../src/core";
 
 /** 盤面とおじゃま台帳の整合性。ランダム入力で長時間回しても崩れないことを確かめる。 */
 function checkInvariants(game: Game): void {
@@ -30,6 +30,27 @@ function checkInvariants(game: Game): void {
         if (cell.kind >= 0 && cell.garbage < 0 && cell.state === "idle") {
           expect(isEmptyCell(b.cells[r - 1][c]), `floating idle panel at (${c},${r})\n${b}`).toBe(false);
         }
+      }
+    }
+  }
+}
+
+/**
+ * このフレームに揃ったパネルの真上にいるおじゃまは、必ず変身している（空中に取り残されていない）。
+ * おじゃまがパネルより遅れて落ちると、揃った瞬間にまだ空中にいて変身し損ねる（報告された不具合）。
+ */
+function checkGarbageTransform(game: Game): void {
+  for (const b of game.boards) {
+    const flash = clearTiming(b.level).flash;
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = b.cells[r][c];
+        if (cell.garbage >= 0 || cell.state !== "matched" || cell.flashTimer !== flash) continue;
+        if (r + 1 >= TOTAL_ROWS) continue;
+        const id = b.cells[r + 1][c].garbage;
+        if (id < 0) continue;
+        const g = b.garbage.get(id)!;
+        expect(g.state, `garbage ${id} above matched (${c},${r}) at frame ${b.frame}\n${b}`).toBe("transforming");
       }
     }
   }
@@ -67,6 +88,7 @@ describe("ランダム入力での長時間実行", () => {
       for (let f = 0; f < 20000 && !game.finished; f++) {
         game.tick([randomInput(rng), randomInput(rng)]);
         attacks += game.boards[0].attacksOut.length + game.boards[1].attacksOut.length;
+        checkGarbageTransform(game);
         if (f % 50 === 0) checkInvariants(game);
       }
       checkInvariants(game);
