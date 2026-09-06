@@ -51,16 +51,21 @@ export class MenuScene extends Phaser.Scene {
 
     const layout = layoutFor("menu");
     applyLayout(this, layout);
+    // e2e 用。ゲームを始める前でもメニューの表示物を調べられるようにする
+    const g = window as unknown as { __paneponScenes?: Record<string, Phaser.Scene> };
+    g.__paneponScenes = { ...g.__paneponScenes, menu: this };
     const W = layout.width;
     const H = layout.height;
     const cx = W / 2;
 
-    const titleY = layout.portrait ? 70 : 56;
+    // 背の低い縦画面（Safari のツールバーがある iPhone など）では、縦の間隔を詰める
+    const compact = layout.portrait && H < 560;
+    const titleY = layout.portrait ? (compact ? 46 : 70) : 56;
     this.add
       .text(cx, titleY, "PANEPON", { fontFamily: FONT, fontSize: layout.portrait ? "48px" : "56px", color: TEXT_COLOR, fontStyle: "bold" })
       .setOrigin(0.5);
     this.add
-      .text(cx, titleY + 48, layout.portrait ? "Panel de Pon style puzzle" : "clone  -  Panel de Pon style action puzzle", {
+      .text(cx, titleY + (compact ? 44 : 48), layout.portrait ? "Panel de Pon style puzzle" : "clone  -  Panel de Pon style action puzzle", {
         fontFamily: FONT,
         fontSize: layout.portrait ? "13px" : "16px",
         color: "#9a9ab0",
@@ -68,17 +73,18 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     KIND_COLORS.forEach((_, k) => {
-      this.add.image(cx - 100 + k * 40, titleY + 88, `panel-${k}`).setScale(1 / DPR);
+      this.add.image(cx - 100 + k * 40, titleY + (compact ? 76 : 88), `panel-${k}`).setScale(1 / DPR);
     });
 
-    const itemTop = titleY + 134;
-    const itemGap = layout.portrait ? 48 : 36;
+    const itemTop = titleY + (compact ? 116 : 134);
+    const itemGap = layout.portrait ? (compact ? 38 : 48) : 36;
+    const itemPad = layout.portrait ? (compact ? 6 : 8) : 4;
     ITEMS.forEach((item, i) => {
-      // 指で押す前提で、文字の上下に余白を取って当たり判定を高さ 40 論理px 以上にする
+      // 指で押す前提で、文字の上下に余白を取って当たり判定を高さ 32 論理px 以上にする
       const t = this.add
-        .text(cx, itemTop + i * itemGap, item.label, { fontFamily: FONT, fontSize: "22px", color: TEXT_COLOR })
+        .text(cx, itemTop + i * itemGap, item.label, { fontFamily: FONT, fontSize: compact ? "20px" : "22px", color: TEXT_COLOR })
         .setOrigin(0.5)
-        .setPadding(16, layout.portrait ? 8 : 4, 16, layout.portrait ? 8 : 4)
+        .setPadding(16, itemPad, 16, itemPad)
         .setInteractive({ useHandCursor: true });
       t.on("pointerover", () => {
         this.index = i;
@@ -97,18 +103,22 @@ export class MenuScene extends Phaser.Scene {
     const cpuLine = (["easy", "normal", "hard"] as CpuLevel[])
       .map((l) => `${layout.portrait ? l[0].toUpperCase() : l.toUpperCase()} ${hs.cpu[l].wins}-${hs.cpu[l].losses}`)
       .join(layout.portrait ? "  " : "   ");
+    // タップすると上位5件の一覧を開く
     this.add
       .text(
         cx,
-        itemTop + (ITEMS.length - 1) * itemGap + 26,
-        [best ? `BEST ${String(best.score).padStart(6, "0")}   MAX CHAIN x${best.maxChain}` : "BEST ------", `VS CPU  ${cpuLine}`].join("\n"),
+        itemTop + (ITEMS.length - 1) * itemGap + (compact ? 20 : 26),
+        [best ? `BEST ${String(best.score).padStart(6, "0")}   MAX CHAIN x${best.maxChain}` : "BEST ------", `VS CPU  ${cpuLine}`, "▸ RECORDS"].join("\n"),
         { fontFamily: FONT, fontSize: "12px", color: "#7a7a90", align: "center" },
       )
       .setOrigin(0.5, 0)
+      .setPadding(16, 6, 16, 6)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => this.showRecords())
       .setName("records");
 
     const help = layout.touch
-      ? ["Tap between two panels to swap them", "Drag a panel sideways to swap", "Hold outside the board, or two fingers on it, to raise", "Pause with the ❚❚ button"]
+      ? ["Tap between two panels to swap them", "Drag a panel sideways to swap", "Raise: hold outside board / 2 fingers", "Pause with the ❚❚ button"]
       : [
           "P1: ←↑↓→ move   Z swap   X raise        P2: WASD move   F swap   H raise",
           "Gamepad: D-pad / stick move   A,B swap   L,R raise      P pause   R restart   Esc menu",
@@ -143,7 +153,7 @@ export class MenuScene extends Phaser.Scene {
       ).setName("vibration");
       toggles.push(t);
     }
-    const toggleY = H - (layout.touch ? 96 : 92);
+    const toggleY = H - (layout.touch ? 88 : 92);
     toggles.forEach((b, i) => b.setPosition(cx + (i - (toggles.length - 1) / 2) * 132, toggleY));
     this.add
       .text(cx, H - 34, help.join("\n"), {
@@ -182,6 +192,35 @@ export class MenuScene extends Phaser.Scene {
     kb.on("keydown-S", () => this.moveIndex(1));
     for (const key of ["ENTER", "Z", "SPACE", "F"]) kb.on(`keydown-${key}`, () => this.select());
     this.refresh();
+  }
+
+  /** 上位5件と CPU 戦の勝敗の一覧。暗幕をタップするか CLOSE で閉じる。 */
+  private showRecords(): void {
+    const layout = layoutFor("menu");
+    const W = layout.width;
+    const H = layout.height;
+    const hs = loadHighScores();
+    const lines = ["1P ENDLESS  TOP 5", ""];
+    if (hs.endless.length === 0) lines.push("no records yet");
+    hs.endless.forEach((e, i) => {
+      lines.push(`${i + 1}.  ${String(e.score).padStart(6, "0")}   x${String(e.maxChain).padEnd(2)}  ${e.date || "----------"}`);
+    });
+    lines.push("", "VS CPU");
+    for (const l of ["easy", "normal", "hard"] as CpuLevel[]) {
+      const r = hs.cpu[l];
+      lines.push(`${l.toUpperCase().padEnd(7)} ${r.wins}W ${r.losses}L`);
+    }
+    const dim = this.add.rectangle(0, 0, W, H, 0x000000, 0.92).setOrigin(0).setInteractive();
+    const body = this.add
+      .text(W / 2, H / 2 - 40, lines.join("\n"), { fontFamily: FONT, fontSize: "13px", color: TEXT_COLOR, align: "left", lineSpacing: 4 })
+      .setOrigin(0.5);
+    const panel = this.add.container(0, 0, [dim, body]).setDepth(50).setName("records-list");
+    const close = new Button(this, W / 2, H / 2 + body.height / 2 + 10, "CLOSE", () => panel.destroy(), { minWidth: 140, minHeight: 40 });
+    panel.add(close);
+    dim.on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      panel.destroy();
+    });
   }
 
   private moveIndex(d: number): void {

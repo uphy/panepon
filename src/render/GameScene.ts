@@ -9,6 +9,7 @@ import { TouchInput } from "./touch";
 import { applyLayout } from "./hidpi";
 import { Button } from "./ui";
 import { wakeLock } from "./wakelock";
+import { canShare, shareText } from "./share";
 import { BOARD_H, BOARD_W, FONT, TEXT_COLOR, type Layout, layoutFor, sameLayout } from "./theme";
 
 const STEP_MS = 1000 / 60;
@@ -377,6 +378,22 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** 結果を共有する。共有シートがなければクリップボードへコピーし、ボタンの文字で伝える。 */
+  private async share(button: Button): Promise<void> {
+    const g = this.game_;
+    const b = g.boards[0];
+    let text: string;
+    if (this.mode === "endless") {
+      text = `PANEPON  SCORE ${b.score}  MAX CHAIN x${b.maxChain}`;
+    } else {
+      const result = g.winner === 0 ? "WIN" : "LOSE";
+      const foe = this.mode === "cpu" ? `CPU ${this.cpuLevel.toUpperCase()}` : "2P";
+      text = `PANEPON  ${result} vs ${foe}  MAX CHAIN x${b.maxChain}`;
+    }
+    const outcome = await shareText(text);
+    button.setText(outcome === "copied" ? "COPIED" : outcome === "failed" ? "SHARE FAILED" : "SHARE");
+  }
+
   private finish(): void {
     this.ended = true;
     this.pauseButton.setVisible(false);
@@ -399,6 +416,10 @@ export class GameScene extends Phaser.Scene {
       const menu = new Button(this, 46, BOARD_H / 2 - 40, "MENU", () => this.toMenu(), { minWidth: 84, minHeight: 36 });
       this.views[0].addToOverlay(retry);
       this.views[0].addToOverlay(menu);
+      if (canShare()) {
+        const share = new Button(this, 0, BOARD_H / 2 - 84, "SHARE", () => void this.share(share), { minWidth: 176, minHeight: 36 });
+        this.views[0].addToOverlay(share);
+      }
     });
     if (this.mode === "endless") {
       const b = g.boards[0];

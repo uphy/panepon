@@ -109,9 +109,11 @@ test.describe("スマホ縦画面", () => {
     await page.waitForTimeout(300);
     const size = await page.evaluate(() => {
       const p = (window as any).__panepon;
-      return { w: p.layout.width, h: p.layout.height };
+      const canvas = document.querySelector("canvas")!;
+      return { w: p.layout.width, h: p.layout.height, backing: canvas.width / p.layout.width, dpr: Math.ceil(devicePixelRatio) };
     });
-    expect(size).toEqual({ w: 300, h: 600 });
+    // 幅 300 固定、高さは画面の縦横比（Pixel 7 は 412×839 → 611）。canvas は DPR 倍
+    expect(size).toEqual({ w: 300, h: 611, backing: size.dpr, dpr: size.dpr });
     await page.screenshot({ path: `${SHOT}/mobile-endless.png` });
 
     // (2,0) と (3,0) の境目をタップ → 1回で入れ替わる

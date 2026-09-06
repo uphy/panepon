@@ -39,7 +39,8 @@ test("縦持ちの CPU 対戦は自分の盤面が等倍、CPU の盤面が半�
       cellPx: 32 * s,
     };
   });
-  expect(info.layout).toEqual({ w: 340, h: 600, portrait: true });
+  // 340 × 839 / 412 = 692 だが上限 640 で止まる
+  expect(info.layout).toEqual({ w: 340, h: 640, portrait: true });
   expect(info.scales).toEqual([1, 0.5]);
   expect(info.left).toBeGreaterThanOrEqual(24);
   expect(info.right).toBeGreaterThanOrEqual(24);
@@ -165,4 +166,37 @@ test("盤面を2本指で押している間はせり上げ。離すと止まる"
     rowsAfter - rowsBefore,
   );
   expect(bottomAfter).toEqual(bottomBefore);
+});
+
+test.describe("iPhone 14", () => {
+  const iphone = devices["iPhone 14"];
+  test.use({
+    viewport: iphone.viewport,
+    deviceScaleFactor: iphone.deviceScaleFactor,
+    isMobile: iphone.isMobile,
+    hasTouch: iphone.hasTouch,
+    userAgent: iphone.userAgent,
+  });
+
+  test("縦持ちレイアウトになり、canvas は DPR 3 で作られて中央に置かれる", async ({ page }) => {
+    await page.goto("/?mode=endless&seed=7&bgm=0&countdown=0");
+    await page.waitForFunction(() => Boolean((window as any).__panepon?.game));
+    await page.waitForTimeout(200);
+    const info = await page.evaluate(() => {
+      const p = (window as any).__panepon;
+      const canvas = document.querySelector("canvas")!;
+      const rect = canvas.getBoundingClientRect();
+      return {
+        layout: { w: p.layout.width, h: p.layout.height, portrait: p.layout.portrait, touch: p.layout.touch },
+        backing: [canvas.width, canvas.height],
+        centerDx: Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2),
+        cellPx: (32 * rect.width) / p.layout.width,
+      };
+    });
+    // iPhone 14 の Safari は 390×664 なので、高さは下限の 500 まで下がる
+    expect(info.layout).toEqual({ w: 300, h: 511, portrait: true, touch: true });
+    expect(info.backing).toEqual([900, 1533]);
+    expect(info.centerDx).toBeLessThan(2);
+    expect(info.cellPx).toBeGreaterThanOrEqual(36);
+  });
 });

@@ -39,13 +39,19 @@ export function layoutFor(mode: "menu" | "endless" | "versus" | "cpu"): Layout {
   const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
   const touch = isTouchDevice();
   if (portrait) {
+    // 幅を固定し、高さは画面の縦横比に合わせる。高さも固定すると、Safari のツールバーぶん背が低い iPhone で
+    // 縦に合わせて縮み、盤面が幅いっぱいにならない。下限は盤面とその下の表示が収まる高さ、上限は間延びしない高さ。
+    const fit = (width: number, minH: number, maxH: number): Layout => {
+      const byAspect = Math.round((width * window.innerHeight) / window.innerWidth);
+      return { width, height: Math.max(minH, Math.min(maxH, byAspect)), portrait, touch };
+    };
     // Android の戻るジェスチャ（画面端からの横スワイプ）を盤面のドラッグが踏まないよう、
     // 盤面の左右には実画面で 24dp 以上の余白を取る（論理 px は幅 412dp の端末で換算）。
     // 2P 対戦は同じ大きさの2盤面を並べる（左右 33 論理px = 約 29dp）。
-    if (mode === "versus") return { width: 470, height: 640, portrait, touch };
+    if (mode === "versus") return fit(470, 560, 700);
     // CPU 対戦は自分の盤面を 1P エンドレスと同じ大きさで描き、CPU の盤面は半分の大きさで右に添える（左右 20 論理px = 約 24dp）。
-    if (mode === "cpu") return { width: 340, height: 600, portrait, touch };
-    return { width: 300, height: 600, portrait, touch };
+    if (mode === "cpu") return fit(340, 500, 640);
+    return fit(300, 500, 640);
   }
   return { width: 800, height: 520, portrait, touch };
 }
