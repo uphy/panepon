@@ -60,7 +60,14 @@ P で一時停止、R でやり直し、Esc でメニュー、M でミュート�
 - **VS CPU**: EASY / NORMAL / HARD の CPU と対戦。勝敗数を保存する。CPU は人と同じ制約（カーソルを1マスずつ動かし、カーソル位置でだけ入れ替える）で動き、難易度は思考の待ち時間・カーソル速度・1手先の連鎖読み・仕込みの有無で差をつけている（`src/core/ai.ts`）
 - **2P VERSUS**: 同じキーボードかゲームパッド2台での対戦
 
-スマホで遊ぶときは、同じ Wi-Fi にいる状態で Mac 側を `pnpm dev --host` で起動し、表示される `Network:` の URL をスマホのブラウザで開く。iOS は Safari の「ホーム画面に追加」で全画面になる。
+スマホで遊ぶときは、同じ Wi-Fi にいる状態で Mac 側を `pnpm dev --host` で起動し、表示される `Network:` の URL をスマホのブラウザで開く。
+
+### PWA
+
+- ビルドすると manifest と Service Worker（vite-plugin-pwa）が付き、Android Chrome は「ホーム画面に追加」でインストールできる。iOS は Safari の共有メニューから「ホーム画面に追加」で全画面になる
+- 一度開けば、Service Worker がビルド成果物を丸ごと precache するので、次回からはオフラインでも遊べる。新しい版は次に開いたときに切り替わる
+- アイコンは `node tools/make-icons.mjs` がコードから PNG を生成する（`public/icons/`）。画像ファイルを手で描くことはしない
+- iOS はサイレントスイッチ（本体横のスイッチ）が ON だと WebAudio の音が全部消える。音が出ないときはまずここを確認する
 
 ## 実装している仕様
 

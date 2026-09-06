@@ -19,10 +19,8 @@
 
 ## 2. 次点（スマホ運用として欲しい）
 
-- [ ] PWA としてインストールできる形にする
-  - manifest の `icons` が空。Android Chrome はアイコン（192/512）がないとインストール候補にならず、iOS はスクリーンショットをアイコンにする
-  - `apple-touch-icon` を追加。アイコンはコードから PNG を生成するスクリプトで作る
-  - Service Worker でオフライン起動できるようにする
+- [x] PWA としてインストールできる形にする
+  - 対応: vite-plugin-pwa（generateSW, autoUpdate）で manifest と Service Worker を生成。アイコンは `tools/make-icons.mjs` が zlib だけで PNG を書く（192 / 512 / maskable 512 / apple-touch-icon 180）。`e2e/pwa.spec.ts` でオフライン再読込を確認
 - [ ] せり上げの操作をもう1つ用意する
   - 今は「盤面の外を押し続ける」だけ。縦持ちのエンドレスは盤面が画面幅いっぱいなので、押せる場所が上下の余白に限られる
   - 候補は専用の RAISE ボタン、盤面の2本指押し、上フリック。パネルドラッグと衝突しにくいのはボタンか2本指
